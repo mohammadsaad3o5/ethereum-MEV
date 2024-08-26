@@ -16,5 +16,5 @@ while True:
     else:
         prev = pending
         print(prev)
-    time.sleep(9)
+    time.sleep(1)
 
