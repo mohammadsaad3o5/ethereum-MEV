@@ -1,4 +1,7 @@
 import utility
+from random import randint, choice
+import time
+from web3 import Web3
 
 
 # for now just test transactions
@@ -45,3 +48,40 @@ ethereum_address = ["0x8943545177806ED17B9F23F0a21ee5948eCaa776",
                     "0xD9211042f35968820A3407ac3d80C725f8F75c14",
                     "0xD8F3183DEF51A987222D845be228e0Bbb932C222",
                     "0xafF0CA253b97e54440965855cec0A8a2E2399896"]
+
+# function to spam transaction
+def spam(priv, addr, bribe):
+    value = randint(5000, 500000)
+    hash = utility.send_signed_transaction(priv, addr, value, bribe)
+    print(f"sent a transaction from {ethereum_address[private_key.index(priv)]} to {addr} for {value} wei")
+    print(hash)
+    return None
+
+def wait_for_next_block():
+    # initialize here cause apparently this expires after 500 calls
+    w3 = Web3(Web3.HTTPProvider(utility.rpc_url))
+    curBlock = w3.eth.block_number
+    while curBlock == w3.eth.block_number:
+        time.sleep(0.1)
+    # block number changed
+    return True
+
+
+bribe = 0
+wait_for_next_block()
+
+# 23 transactions sent at 0.5s intervals
+for i in range(23):
+    # randomly pick one address
+    options = list(range(0, 19))
+    idx_sender = choice(options)
+    # ensure sender not same as receiver
+    options.remove(idx_sender)
+    idx_receiver = choice(options)
+    spam(private_key[idx_sender], ethereum_address[idx_receiver], bribe)
+
+    #increase bribe for the transations coming in later
+    bribe += 50000
+    time.sleep(0.5)
+
+

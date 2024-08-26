@@ -1,5 +1,6 @@
 import json
 import requests
+import re
 # every query is sent to the execution client
 from web3 import Web3
 from eth_account import Account
@@ -7,7 +8,7 @@ import hashlib
 from web3.middleware import construct_sign_and_send_raw_middleware
 
 
-rpc_url = "http://localhost:33020"
+rpc_url = "http://localhost:33055"
 
 # Initialize Web3 instance
 w3 = Web3(Web3.HTTPProvider(rpc_url))
@@ -26,7 +27,7 @@ def send_rpc_request(method, params=[]):
     return response.json()
 
 
-def send_signed_transaction(private_key, to_address, value):
+def send_signed_transaction(private_key, to_address, value, boost=0):
     # Initialize Web3 instance again because apparently it resets after 500 calls
     # and I am planning on using this to spam hehe
     w3 = Web3(Web3.HTTPProvider(rpc_url))
@@ -34,23 +35,24 @@ def send_signed_transaction(private_key, to_address, value):
 
     w3.middleware_onion.add(construct_sign_and_send_raw_middleware(sender_account))
 
+    # print(f"gas price is {w3.eth.gas_price}, of type {type(w3.eth.gas_price)}")
     transaction = {
         "from": sender_account.address,
         "value": hex(value),
         "to": to_address,
         "data": "0xabcd",
-        "gasPrice": w3.eth.gas_price,
+        "gasPrice": w3.eth.gas_price + boost
     }
 
     estimated_gas = w3.eth.estimate_gas(transaction)
-
-
-    transaction["gas"] = estimated_gas
+   
+    # print(f"gas price is {transaction['gasPrice']} {w3.eth.gas_price}, but estimated is {estimated_gas}")
+    transaction["gas"] = estimated_gas + boost
 
     tx_hash = w3.eth.send_transaction(transaction)
 
     tx = w3.eth.get_transaction(tx_hash)
-    print(tx)
+    # print(tx)
     return tx_hash.hex()
     
     # # Prepare the transaction
@@ -80,19 +82,36 @@ def get_block(block_number):
     block_number = hex(block_number)
     block_response = send_rpc_request("eth_getBlockByNumber", [block_number, True])
     response_string = ""
-    print(block_response)
+    # print(block_response)
     if block_response.get("result") == None:
         # print("Block doesn't exist")
         return None
     elif 'result' in block_response:
         transactions = block_response['result']['transactions']
+        print(block_response)
         response_string += f"Transactions in block {block_number}:\n"
         for tx in transactions:
             response_string += f"Transaction Hash: {tx['hash']}\n"
             response_string += f"From: {tx['from']}\n"
             response_string += f"To: {tx['to']}\n"
             response_string += f"Value: {tx['value']} wei\n"
+            response_string += f"Gasprice: {tx['gasPrice']} wei\n"
             response_string += "-----------------------------\n"
+
+        # to avoid trying to regex empty response
+        hex_pattern_block = r"block 0x([0-9a-fA-F]+):"
+
+        match = re.search(hex_pattern_block, response_string)
+        if match:
+            hex_block = match.group(1)
+            decimal = int(hex_block, 16)
+            response_string = re.sub(hex_pattern_block, f'block {decimal}:', response_string)
+        hex_pattern_value = r"Value: 0x([0-9a-fA-F]+) wei"
+        match = re.search(hex_pattern_value, response_string)
+        if match:
+            hex_value = match.group(1)
+            decimal = int(hex_value, 16)
+            response_string = re.sub(hex_pattern_value, f'Value: {decimal} wei', response_string)
 
     return response_string
 
@@ -164,7 +183,7 @@ if __name__ == "__main__":
                 get_balance(address)
 
             if request == '3':
-                block_number = int(input("Block number: "))
+                block_number = int(input(f"Block number (latest is {w3.eth.block_number}): "))
                 response = get_block(block_number)
                 print(response)
                 
