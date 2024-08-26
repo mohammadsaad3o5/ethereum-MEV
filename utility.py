@@ -3,13 +3,18 @@ import requests
 # every query is sent to the execution client
 from web3 import Web3
 from eth_account import Account
+import hashlib
+from web3.middleware import construct_sign_and_send_raw_middleware
+
+
+rpc_url = "http://localhost:33020"
 
 # Initialize Web3 instance
-w3 = Web3(Web3.HTTPProvider("http://localhost:8545"))
+w3 = Web3(Web3.HTTPProvider(rpc_url))
 
 def send_rpc_request(method, params=[]):
     # handles the rpc request format, calls just have to have the request and arguments
-    url = "http://localhost:8545"
+    
     headers = {'Content-Type': 'application/json'}
     data = {
         "jsonrpc": "2.0",
@@ -17,27 +22,57 @@ def send_rpc_request(method, params=[]):
         "params": params,
         "id": 1
     }
-    response = requests.post(url, headers=headers, data=json.dumps(data))
+    response = requests.post(rpc_url, headers=headers, data=json.dumps(data))
     return response.json()
 
 
-def send_signed_transaction(private_key, to_address, value, gas, gas_price, nonce):
-    # Prepare the transaction
+def send_signed_transaction(private_key, to_address, value):
+    # Initialize Web3 instance again because apparently it resets after 500 calls
+    # and I am planning on using this to spam hehe
+    w3 = Web3(Web3.HTTPProvider(rpc_url))
+    sender_account = w3.eth.account.from_key(private_key)
+
+    w3.middleware_onion.add(construct_sign_and_send_raw_middleware(sender_account))
+
     transaction = {
-        'nonce': nonce,
-        'gasPrice': Web3.toWei(gas_price, 'gwei'),
-        'gas': gas,
-        'to': to_address,
-        'value': Web3.toWei(value, 'ether'),
-        'data': b'',
+        "from": sender_account.address,
+        "value": hex(value),
+        "to": to_address,
+        "data": "0xabcd",
+        "gasPrice": w3.eth.gas_price,
     }
 
-    # Sign the transaction
-    signed_tx = w3.eth.account.sign_transaction(transaction, private_key)
-    
-    # Send the transaction
-    tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+    estimated_gas = w3.eth.estimate_gas(transaction)
+
+
+    transaction["gas"] = estimated_gas
+
+    tx_hash = w3.eth.send_transaction(transaction)
+
+    tx = w3.eth.get_transaction(tx_hash)
+    print(tx)
     return tx_hash.hex()
+    
+    # # Prepare the transaction
+    # from random import randint
+    # transaction = {
+    #     'nonce': randint(10, 1000000),
+    #     "gasPrice": w3.eth.gas_price,
+    #     'to': to_address,
+    #     'value': hex(value), 
+    #     'data': b'',
+    # }
+    # estimated_gas = w3.eth.estimate_gas(transaction)
+    # transaction["gas"] = estimated_gas
+
+    # # Sign the transaction
+    # signed_tx = w3.eth.account.sign_transaction(transaction, private_key)
+    
+    # # Send the transaction
+    # tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+    # print('gas:', transaction["gas"])
+    # print("gas price:", transaction['gasPrice'])
+    # return tx_hash.hex()
 
 def get_block(block_number):
     # gets the block number queried
@@ -45,6 +80,7 @@ def get_block(block_number):
     block_number = hex(block_number)
     block_response = send_rpc_request("eth_getBlockByNumber", [block_number, True])
     response_string = ""
+    print(block_response)
     if block_response.get("result") == None:
         # print("Block doesn't exist")
         return None
@@ -84,6 +120,18 @@ def send_transaction(from_address, to_address, value):
     else:
         print('Transaction hash:', send_transaction_response['result'])
 
+
+def pubKey_to_address(public_key_hex):
+    # Convert to bytes
+    public_key_bytes = bytes.fromhex(public_key_hex)
+    # Hash the public key using Keccak-256
+    keccak_hash = hashlib.sha3_256(public_key_bytes).digest()
+    # Take the last 20 bytes of the hash to get the Ethereum address
+    eth_address = '0x' + keccak_hash[-20:].hex()
+    # print("Derived Ethereum Address:", eth_address)
+    return eth_address
+
+
 if __name__ == "__main__":
     while True:
         # if run as main, keep asking what you want to do
@@ -93,23 +141,23 @@ if __name__ == "__main__":
         request = input("What do you want to do?: ")
         try: 
             if request == '1':
-                priv = False
-                from_address = input("From address: 0x123463a4b065722e99115d6c222f267d9cabb524 - by default (any key to decline)")
-                if from_address == "":
-                    from_address = "0x123463a4b065722e99115d6c222f267d9cabb524"
-                else:
-                    from_address = input("From address: 0x")
-                    from_address += '0x'
-                    priv = True
-                if priv:
-                    private_key = input("Private key: 0x")
 
+                # from_address = '0x'+ input("From address: 0x")
+                # # if pubKey provided then convert to etheruem address
+                # if len(from_address) > 40:
+                #     from_address = pubKey_to_address(from_address[2:])
+                private_key = input('Private key: ')
                 to_address = '0x' + input("To address: 0x")
+
+                # if pubKey provided then convert to etheruem address
+                # if len(to_address) > 40:
+                #     to_address = pubKey_to_address(to_address[2:])
+
                 value = int(input("Value: "))
-                if not priv:
-                    send_transaction(from_address, to_address, value)
-                else:
-                    send_signed_transaction(private_key, to_address, value, '0x2710', '0x09184e72a000', '0x00')
+                # assume for now that EL has all the keys loaded up
+                # send_transaction(from_address, to_address, value)
+                hex = send_signed_transaction(private_key, to_address, value)
+                print(hex)
 
             if request == '2':
                 address = '0x' + input("Address (that you want to check the balance of): 0x")
