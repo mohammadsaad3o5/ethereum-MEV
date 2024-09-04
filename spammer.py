@@ -50,10 +50,10 @@ ethereum_address = ["0x8943545177806ED17B9F23F0a21ee5948eCaa776",
                     "0xafF0CA253b97e54440965855cec0A8a2E2399896"]
 
 # function to spam transaction
-def spam(priv, addr, bribe):
+def spam(priv, addr, bribe, idx):
     value = randint(5000, 500000)
     hash = utility.send_signed_transaction(priv, addr, value, bribe)
-    print(f"sent a transaction from {ethereum_address[private_key.index(priv)]} to {addr} for {value} wei")
+    print(f"({idx})sent a transaction from {ethereum_address[private_key.index(priv)]} to {addr} for {value} wei")
     print(hash)
     return None
 
@@ -70,17 +70,17 @@ def wait_for_next_block():
 bribe = 0
 wait_for_next_block()
 
-# 23 transactions sent at 0.5s intervals
-for i in range(23):
+# 17 transactions sent at 0.5s intervals
+options = list(range(0, 19))
+for i in range(17):
     # randomly pick one address
-    options = list(range(0, 19))
     idx_sender = choice(options)
     # ensure sender not same as receiver
     options.remove(idx_sender)
     idx_receiver = choice(options)
-    spam(private_key[idx_sender], ethereum_address[idx_receiver], bribe)
+    spam(private_key[idx_sender], ethereum_address[idx_receiver], bribe, i)
 
-    #increase bribe for the transations coming in later
+    #increase bribe for the transactions coming in later
     bribe += 50000
     time.sleep(0.5)
 

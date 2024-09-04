@@ -6,12 +6,47 @@ from web3 import Web3
 from eth_account import Account
 import hashlib
 from web3.middleware import construct_sign_and_send_raw_middleware
+from eth_utils import to_checksum_address
+import rlp
 
 
-rpc_url = "http://localhost:33055"
-
+'''
+0xd676AF79742bCAeb4a71CF62b85d5ba2D1deaf86
+0x154E2238a212Ee4209111D2F3F6351D80e5d74B6
+'''
+rpc_url = "http://localhost:33372"
+# print(get_contract_address('0x2c57d1cfc6d5f8e4182a56b4cf75421472ebaea4', 3))
 # Initialize Web3 instance
 w3 = Web3(Web3.HTTPProvider(rpc_url))
+
+# Load the contract ABI
+with open('UniSwapPair.json', 'r') as abi_file:
+    contract_abi = json.load(abi_file)['abi']
+
+contract_address = '0xd676AF79742bCAeb4a71CF62b85d5ba2D1deaf86'
+contract = w3.eth.contract(address=contract_address, abi=contract_abi)
+
+
+def get_contract_address(sender_address, nonce):
+
+    # Compute the contract address
+    sender_bytes = Web3.to_bytes(hexstr=sender_address)
+    nonce_bytes = rlp.encode(nonce)
+    contract_address = Web3.keccak(rlp.encode([sender_bytes, nonce_bytes]))[12:]
+
+    checksum_address = to_checksum_address(Web3.to_hex(contract_address))
+    return checksum_address
+
+def decode_transaction_input(tx_hash, contract):
+
+    tx = w3.eth.get_transaction(tx_hash)
+    input_data = tx['input']
+    try:
+        decoded_input = contract.decode_function_input(input_data)
+    except:
+        return "Invalid function"
+    return decoded_input
+
 
 def send_rpc_request(method, params=[]):
     # handles the rpc request format, calls just have to have the request and arguments
@@ -88,14 +123,18 @@ def get_block(block_number):
         return None
     elif 'result' in block_response:
         transactions = block_response['result']['transactions']
-        print(block_response)
+        # print(block_response)
         response_string += f"Transactions in block {block_number}:\n"
         for tx in transactions:
             response_string += f"Transaction Hash: {tx['hash']}\n"
+            response_string += f"Index: {int(tx['transactionIndex'], 16)}, Nonce: {int(tx['nonce'], 16)}\n"
             response_string += f"From: {tx['from']}\n"
             response_string += f"To: {tx['to']}\n"
-            response_string += f"Value: {tx['value']} wei\n"
-            response_string += f"Gasprice: {tx['gasPrice']} wei\n"
+            if int(tx['value'], 16) == 0:
+                response_string += f"{decode_transaction_input(tx['hash'], contract)}\n"
+            else:
+                response_string += f"Value: {int(tx['value'], 16)} wei\n"
+            response_string += f"Gasprice: {int(tx['gasPrice'], 16)} wei\n"
             response_string += "-----------------------------\n"
 
         # to avoid trying to regex empty response
@@ -106,12 +145,21 @@ def get_block(block_number):
             hex_block = match.group(1)
             decimal = int(hex_block, 16)
             response_string = re.sub(hex_pattern_block, f'block {decimal}:', response_string)
-        hex_pattern_value = r"Value: 0x([0-9a-fA-F]+) wei"
-        match = re.search(hex_pattern_value, response_string)
-        if match:
-            hex_value = match.group(1)
-            decimal = int(hex_value, 16)
-            response_string = re.sub(hex_pattern_value, f'Value: {decimal} wei', response_string)
+        # hex_pattern_value = r"Value: 0x([0-9a-fA-F]+) wei"
+        # match = re.search(hex_pattern_value, response_string)
+        # if match:
+        #     hex_value = match.group(1)
+        #     decimal = int(hex_value, 16)
+        #     response_string = re.sub(hex_pattern_value, f'Value: {decimal} wei', response_string)
+
+
+    # # Function signature
+    # function_signature = "Mint(address,uint256,uint256)"
+
+    # # Generate the function selector (first 4 bytes of Keccak-256 hash)
+    # function_selector = Web3.keccak(text=function_signature)[:4].hex()
+
+    # print(function_selector)
 
     return response_string
 
