@@ -11,20 +11,34 @@ import rlp
 
 
 '''
-0xd676AF79742bCAeb4a71CF62b85d5ba2D1deaf86
-0x154E2238a212Ee4209111D2F3F6351D80e5d74B6
+0xd676AF79742bCAeb4a71CF62b85d5ba2D1deaf86 - DAI // this contract only takes in ether
+0x154E2238a212Ee4209111D2F3F6351D80e5d74B6 - uniV2FactoryB // takes a call once, probably liquidity pool stuff
+0xB77d61Ea79c7Ea8bfa03d3604Ce5EaBfb95C2aB2 - uniV2FactoryA // takes in a call once, same as above
+0x6C6340BA1Dc72c59197825cD94EcCC1f9c67416e - atomicSwap // only used in contract calls
+0x991145EA701D75fC8352c32Ac8728A335F8f0fb9 - daiWethA // minted once (so call to contract) and rest used in calls
+0x3676554055b1c713A5A19C574baA3186B3DCB8d8 - daiWethB // minted once (so call to contract) and rest used in calls
 '''
-rpc_url = "http://localhost:33372"
+rpc_url = "http://localhost:33423"
 # print(get_contract_address('0x2c57d1cfc6d5f8e4182a56b4cf75421472ebaea4', 3))
 # Initialize Web3 instance
 w3 = Web3(Web3.HTTPProvider(rpc_url))
 
-# Load the contract ABI
-with open('UniSwapPair.json', 'r') as abi_file:
-    contract_abi = json.load(abi_file)['abi']
+contract_list = []
 
-contract_address = '0xd676AF79742bCAeb4a71CF62b85d5ba2D1deaf86'
-contract = w3.eth.contract(address=contract_address, abi=contract_abi)
+# Load the contract ABI
+with open('DAI.json', 'r') as abi_file:
+    dai_contract_abi = json.load(abi_file)['abi']
+with open('UniSwapFactory.json', 'r') as abi_file:
+    factory_abi = json.load(abi_file)['abi']
+
+
+# Load the contracts into a list
+dai_contract_address = '0xd676AF79742bCAeb4a71CF62b85d5ba2D1deaf86'
+dai_contract = w3.eth.contract(address=dai_contract_address, abi=dai_contract_abi)
+contract_list.append(dai_contract)
+factory_contract_address = "0x154E2238a212Ee4209111D2F3F6351D80e5d74B6"
+factory_contract = w3.eth.contract(address=factory_contract_address, abi=factory_abi)
+contract_list.append(factory_contract)
 
 
 def get_contract_address(sender_address, nonce):
@@ -37,15 +51,21 @@ def get_contract_address(sender_address, nonce):
     checksum_address = to_checksum_address(Web3.to_hex(contract_address))
     return checksum_address
 
-def decode_transaction_input(tx_hash, contract):
-
+def decode_transaction_input(tx_hash):
     tx = w3.eth.get_transaction(tx_hash)
     input_data = tx['input']
-    try:
-        decoded_input = contract.decode_function_input(input_data)
-    except:
-        return "Invalid function"
-    return decoded_input
+
+    for contract in contract_list:
+        try:
+            decoded_input = contract.decode_function_input(input_data)
+            return decoded_input
+        except Exception as e:
+            continue  # Move to the next contract if decoding fails
+
+    # If all contracts fail to decode, return the contract address
+    contract_add = get_contract_address(tx['from'], tx['nonce'])
+    return f"Unable to decode. Contract address: {contract_add}"
+
 
 
 def send_rpc_request(method, params=[]):
@@ -90,26 +110,7 @@ def send_signed_transaction(private_key, to_address, value, boost=0):
     # print(tx)
     return tx_hash.hex()
     
-    # # Prepare the transaction
-    # from random import randint
-    # transaction = {
-    #     'nonce': randint(10, 1000000),
-    #     "gasPrice": w3.eth.gas_price,
-    #     'to': to_address,
-    #     'value': hex(value), 
-    #     'data': b'',
-    # }
-    # estimated_gas = w3.eth.estimate_gas(transaction)
-    # transaction["gas"] = estimated_gas
-
-    # # Sign the transaction
-    # signed_tx = w3.eth.account.sign_transaction(transaction, private_key)
     
-    # # Send the transaction
-    # tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-    # print('gas:', transaction["gas"])
-    # print("gas price:", transaction['gasPrice'])
-    # return tx_hash.hex()
 
 def get_block(block_number):
     # gets the block number queried
@@ -131,7 +132,7 @@ def get_block(block_number):
             response_string += f"From: {tx['from']}\n"
             response_string += f"To: {tx['to']}\n"
             if int(tx['value'], 16) == 0:
-                response_string += f"{decode_transaction_input(tx['hash'], contract)}\n"
+                response_string += f"{decode_transaction_input(tx['hash'])}\n"
             else:
                 response_string += f"Value: {int(tx['value'], 16)} wei\n"
             response_string += f"Gasprice: {int(tx['gasPrice'], 16)} wei\n"
@@ -145,21 +146,7 @@ def get_block(block_number):
             hex_block = match.group(1)
             decimal = int(hex_block, 16)
             response_string = re.sub(hex_pattern_block, f'block {decimal}:', response_string)
-        # hex_pattern_value = r"Value: 0x([0-9a-fA-F]+) wei"
-        # match = re.search(hex_pattern_value, response_string)
-        # if match:
-        #     hex_value = match.group(1)
-        #     decimal = int(hex_value, 16)
-        #     response_string = re.sub(hex_pattern_value, f'Value: {decimal} wei', response_string)
-
-
-    # # Function signature
-    # function_signature = "Mint(address,uint256,uint256)"
-
-    # # Generate the function selector (first 4 bytes of Keccak-256 hash)
-    # function_selector = Web3.keccak(text=function_signature)[:4].hex()
-
-    # print(function_selector)
+        
 
     return response_string
 
@@ -239,3 +226,60 @@ if __name__ == "__main__":
             print(e)
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# # Prepare the transaction
+    # from random import randint
+    # transaction = {
+    #     'nonce': randint(10, 1000000),
+    #     "gasPrice": w3.eth.gas_price,
+    #     'to': to_address,
+    #     'value': hex(value), 
+    #     'data': b'',
+    # }
+    # estimated_gas = w3.eth.estimate_gas(transaction)
+    # transaction["gas"] = estimated_gas
+
+    # # Sign the transaction
+    # signed_tx = w3.eth.account.sign_transaction(transaction, private_key)
+    
+    # # Send the transaction
+    # tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+    # print('gas:', transaction["gas"])
+    # print("gas price:", transaction['gasPrice'])
+    # return tx_hash.hex()
+
+
+
+
+
+    # hex_pattern_value = r"Value: 0x([0-9a-fA-F]+) wei"
+        # match = re.search(hex_pattern_value, response_string)
+        # if match:
+        #     hex_value = match.group(1)
+        #     decimal = int(hex_value, 16)
+        #     response_string = re.sub(hex_pattern_value, f'Value: {decimal} wei', response_string)
+
+
+    # # Function signature
+    # function_signature = "Mint(address,uint256,uint256)"
+
+    # # Generate the function selector (first 4 bytes of Keccak-256 hash)
+    # function_selector = Web3.keccak(text=function_signature)[:4].hex()
+
+    # print(function_selector)
