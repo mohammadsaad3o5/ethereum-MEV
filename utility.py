@@ -1,6 +1,9 @@
 import json
 import requests
 import re
+from eth_abi.exceptions import ABITypeError
+from eth_abi import encode
+from eth_utils import function_signature_to_4byte_selector, keccak
 # every query is sent to the execution client
 from web3 import Web3
 from eth_account import Account
@@ -11,6 +14,7 @@ import rlp
 
 
 '''
+0x1CD4aF4A9bF33474C802d31790A195335f7a9Ab8 - DAI (deployed first)
 0xd676AF79742bCAeb4a71CF62b85d5ba2D1deaf86 - DAI // this contract only takes in ether
 0x154E2238a212Ee4209111D2F3F6351D80e5d74B6 - uniV2FactoryB // takes a call once, probably liquidity pool stuff
 0xB77d61Ea79c7Ea8bfa03d3604Ce5EaBfb95C2aB2 - uniV2FactoryA // takes in a call once, same as above
@@ -18,8 +22,8 @@ import rlp
 0x991145EA701D75fC8352c32Ac8728A335F8f0fb9 - daiWethA // minted once (so call to contract) and rest used in calls
 0x3676554055b1c713A5A19C574baA3186B3DCB8d8 - daiWethB // minted once (so call to contract) and rest used in calls
 '''
-rpc_url = "http://localhost:33423"
-# print(get_contract_address('0x2c57d1cfc6d5f8e4182a56b4cf75421472ebaea4', 3))
+rpc_url = "http://localhost:33168"
+
 # Initialize Web3 instance
 w3 = Web3(Web3.HTTPProvider(rpc_url))
 
@@ -51,6 +55,17 @@ def get_contract_address(sender_address, nonce):
     checksum_address = to_checksum_address(Web3.to_hex(contract_address))
     return checksum_address
 
+
+def print_contract_functions_with_selectors(contract):
+    # explore all the available functions
+    for item in contract.abi:
+        if item['type'] == 'function':
+            function_signature = f"{item['name']}({','.join([input['type'] for input in item['inputs']])})"
+            selector = function_signature_to_4byte_selector(function_signature).hex()
+            inputs = ', '.join([f"{input['type']} {input['name']}" for input in item['inputs']])
+            print(f"0x{selector}: {item['name']}({inputs})")
+
+
 def decode_transaction_input(tx_hash):
     tx = w3.eth.get_transaction(tx_hash)
     input_data = tx['input']
@@ -58,8 +73,12 @@ def decode_transaction_input(tx_hash):
     for contract in contract_list:
         try:
             decoded_input = contract.decode_function_input(input_data)
+            # see what functions are available through the contract
+            # print_contract_functions_with_selectors(contract)
+            # print(contract.functions.getReserves().call())
             return decoded_input
         except Exception as e:
+            # print(str(e))
             continue  # Move to the next contract if decoding fails
 
     # If all contracts fail to decode, return the contract address
