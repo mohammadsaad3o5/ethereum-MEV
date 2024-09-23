@@ -22,7 +22,7 @@ import rlp
 0x991145EA701D75fC8352c32Ac8728A335F8f0fb9 - daiWethA // minted once (so call to contract) and rest used in calls
 0x3676554055b1c713A5A19C574baA3186B3DCB8d8 - daiWethB // minted once (so call to contract) and rest used in calls
 '''
-rpc_url = "http://localhost:32783"
+rpc_url = "http://localhost:32848"
 
 # 0x7ff1a4c1d57e5e784d327c4c7651e952350bc271f156afb3d00d20f5ef924856 - contract owner
 # 0x3a91003acaf4c21b3953d94fa4a6db694fa69e5242b2e37be05dd82761058899 - normal user
@@ -36,21 +36,29 @@ w3 = Web3(Web3.HTTPProvider(rpc_url))
 
 contract_list = []
 
-# Load the contract ABI
-with open('DAI.json', 'r') as abi_file:
+# # Load the contract ABI
+with open('jsons/Dai.json', 'r') as abi_file:
     dai_contract_abi = json.load(abi_file)['abi']
-with open('UniSwapFactory.json', 'r') as abi_file:
-    factory_abi = json.load(abi_file)['abi']
+with open('jsons/AtomicSwap.json', 'r') as abi_file:
+    atomicSwap_abi = json.load(abi_file)['abi']
+with open('jsons/WETH9.json', 'r') as abi_file:
+    weth_abi = json.load(abi_file)['abi']
+
 
 
 # Load the contracts into a list
-dai_contract_address = "0x16905D41f37F1ae5801C818046f978D8092eba18" #'0xd676AF79742bCAeb4a71CF62b85d5ba2D1deaf86'
-common_contract_address = "0x16905D41f37F1ae5801C818046f978D8092eba18" 
+dai_contract_address = "0x120671CcDfEbC50Cfe7B7A62bd0593AA6E3F3cF0"
 dai_contract = w3.eth.contract(address=dai_contract_address, abi=dai_contract_abi)
-contract_list.append(dai_contract)
-# factory_contract_address = "0x154E2238a212Ee4209111D2F3F6351D80e5d74B6"
-# factory_contract = w3.eth.contract(address=factory_contract_address, abi=factory_abi)
-# contract_list.append(factory_contract)
+# contract_list.append(dai_contract)
+atomicSwap_contract_address = "0x6C6340BA1Dc72c59197825cD94EcCC1f9c67416e"
+atomicSwap_contract = w3.eth.contract(address=atomicSwap_contract_address, abi=atomicSwap_abi)
+contract_list.append(atomicSwap_contract)
+weth_contract_address = "0x8Ed7F8Eca5535258AD520E32Ff6B8330A187641C"
+weth_contract = w3.eth.contract(address=weth_contract_address, abi=weth_abi)
+# contract_list.append(weth_contract)
+
+
+
 
 # # Path to the 'abi' folder
 # abi_folder = 'abi'
@@ -82,13 +90,28 @@ contract_list.append(dai_contract)
 
 
 def get_contract_address(sender_address, nonce):
+    """
+    Computes the Ethereum contract address based on the sender's address and nonce.
 
-    # Compute the contract address
+    Args:
+        sender_address (str): The hexadecimal address of the sender (e.g., '0xabc123...').
+        nonce (int): The nonce of the sender's account.
+
+    Returns:
+        str: The checksummed contract address.
+    """
+    # Ensure the sender address is in bytes format
     sender_bytes = Web3.to_bytes(hexstr=sender_address)
-    nonce_bytes = rlp.encode(nonce)
-    contract_address = Web3.keccak(rlp.encode([sender_bytes, nonce_bytes]))[12:]
-
-    checksum_address = to_checksum_address(Web3.to_hex(contract_address))
+    
+    # RLP encode the list [sender, nonce] without pre-encoding nonce
+    encoded = rlp.encode([sender_bytes, nonce])
+    
+    # Compute the Keccak-256 hash of the encoded data
+    contract_address_bytes = Web3.keccak(encoded)[12:]
+    
+    # Convert to hexadecimal and apply checksum
+    checksum_address = Web3.to_checksum_address(Web3.to_hex(contract_address_bytes))
+    
     return checksum_address
 
 
@@ -105,13 +128,13 @@ def print_contract_functions_with_selectors(contract):
 def decode_transaction_input(tx_hash):
     tx = w3.eth.get_transaction(tx_hash)
     input_data = tx['input']
-
+    # print(tx)
     for contract in contract_list:
         try:
             decoded_input = contract.decode_function_input(input_data)
             # see what functions are available through the contract
             # print_contract_functions_with_selectors(contract)
-            # print(contract.functions.getReserves().call())
+            # print(contract.liquidate())
             return decoded_input
         except Exception as e:
             # print(str(e))

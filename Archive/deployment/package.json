@@ -1,0 +1,18 @@
+{
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ignition-ethers": "^0.15.5",
+    "hardhat": "^2.22.11",
+    "hardhat-deploy": "^0.12.4"
+  },
+  "dependencies": {
+    "@uniswap/sdk-core": "^3.0.0-alpha.3",
+    "@uniswap/v2-core": "^1.0.1",
+    "@uniswap/v2-periphery": "^1.1.0-beta.0",
+    "@uniswap/v2-sdk": "^3.0.1",
+    "ethers": "^6.13.2",
+    "ethersV6": "npm:ethers@6.5.1",
+    "mathjs": "^11.5.1",
+    "readline-sync": "^1.4.10",
+    "uuid": "^9.0.0"
+  }
+}

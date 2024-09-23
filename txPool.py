@@ -1,4 +1,4 @@
-from utility import send_rpc_request
+from utility import decode_transaction_input
 import time
 import utility
 from web3 import Web3
@@ -29,7 +29,7 @@ def monitor_txpool():
                             f"Hash: {tx_hash}, From: {tx['from']}, To: {tx.get('to', 'Contract Creation')}, ",
                             f"Value: {int(tx['value'], 16)} wei"
                         )
-                        # print(tx)
+                        print(decode_transaction_input(tx_hash))
 
         except Exception as e:
             print(f"Error monitoring txpool: {str(e)}")
