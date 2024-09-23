@@ -22,7 +22,14 @@ import rlp
 0x991145EA701D75fC8352c32Ac8728A335F8f0fb9 - daiWethA // minted once (so call to contract) and rest used in calls
 0x3676554055b1c713A5A19C574baA3186B3DCB8d8 - daiWethB // minted once (so call to contract) and rest used in calls
 '''
-rpc_url = "http://localhost:33168"
+rpc_url = "http://localhost:32783"
+
+# 0x7ff1a4c1d57e5e784d327c4c7651e952350bc271f156afb3d00d20f5ef924856 - contract owner
+# 0x3a91003acaf4c21b3953d94fa4a6db694fa69e5242b2e37be05dd82761058899 - normal user
+
+# ./bin/run init -r http://172.16.0.10:8545 -k 0x7ff1a4c1d57e5e784d327c4c7651e952350bc271f156afb3d00d20f5ef924856 -u 0x3a91003acaf4c21b3953d94fa4a6db694fa69e5242b2e37be05dd82761058899 -s deployment.json
+
+# ./bin/run spam -r http://172.16.0.10:8545 -k 0x7ff1a4c1d57e5e784d327c4c7651e952350bc271f156afb3d00d20f5ef924856 -u 0x3a91003acaf4c21b3953d94fa4a6db694fa69e5242b2e37be05dd82761058899 -l deployment.json 
 
 # Initialize Web3 instance
 w3 = Web3(Web3.HTTPProvider(rpc_url))
@@ -37,12 +44,41 @@ with open('UniSwapFactory.json', 'r') as abi_file:
 
 
 # Load the contracts into a list
-dai_contract_address = '0xd676AF79742bCAeb4a71CF62b85d5ba2D1deaf86'
+dai_contract_address = "0x16905D41f37F1ae5801C818046f978D8092eba18" #'0xd676AF79742bCAeb4a71CF62b85d5ba2D1deaf86'
+common_contract_address = "0x16905D41f37F1ae5801C818046f978D8092eba18" 
 dai_contract = w3.eth.contract(address=dai_contract_address, abi=dai_contract_abi)
 contract_list.append(dai_contract)
-factory_contract_address = "0x154E2238a212Ee4209111D2F3F6351D80e5d74B6"
-factory_contract = w3.eth.contract(address=factory_contract_address, abi=factory_abi)
-contract_list.append(factory_contract)
+# factory_contract_address = "0x154E2238a212Ee4209111D2F3F6351D80e5d74B6"
+# factory_contract = w3.eth.contract(address=factory_contract_address, abi=factory_abi)
+# contract_list.append(factory_contract)
+
+# # Path to the 'abi' folder
+# abi_folder = 'abi'
+# import os
+# # Iterate through all files in the 'abi' folder
+# for filename in os.listdir(abi_folder):
+#     if filename.endswith('.json'):
+#         abi_path = os.path.join(abi_folder, filename)
+        
+#         # Load the ABI from the JSON file
+#         try:
+#             with open(abi_path, 'r') as abi_file:
+#                 abi_json = json.load(abi_file)
+#                 contract_abi = abi_json['abi']
+#         except (FileNotFoundError, json.JSONDecodeError) as e:
+#             print(f"Error loading ABI from {filename}: {e}. Skipping this file.")
+#             continue
+#         except KeyError:
+#             print(f"'abi' key not found in {filename}. Skipping this file.")
+#             continue
+        
+#         # Instantiate the contract with the common address and loaded ABI
+#         try:
+#             contract = w3.eth.contract(address=common_contract_address, abi=contract_abi)
+#             contract_list.append(contract)
+#             print(f"Loaded contract from {filename} at address {common_contract_address}.")
+#         except Exception as e:
+#             print(f"Error creating contract instance from {filename}: {e}. Skipping this file.")
 
 
 def get_contract_address(sender_address, nonce):

@@ -1,0 +1,15 @@
+{
+  "name": "hardhat",
+  "version": "^2.0.0",
+  "description": "test",
+  "main": "index.js",
+  "scripts": {
+    "test": "dep"
+  },
+  "author": "saad bhau",
+  "license": "ISC",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.22.10"
+  }
+}
