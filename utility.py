@@ -49,44 +49,14 @@ with open('jsons/WETH9.json', 'r') as abi_file:
 # Load the contracts into a list
 dai_contract_address = "0x120671CcDfEbC50Cfe7B7A62bd0593AA6E3F3cF0"
 dai_contract = w3.eth.contract(address=dai_contract_address, abi=dai_contract_abi)
-# contract_list.append(dai_contract)
-atomicSwap_contract_address = "0x6C6340BA1Dc72c59197825cD94EcCC1f9c67416e"
+contract_list.append(dai_contract)
+atomicSwap_contract_address = "0x4bF8D2E79E33cfd5a8348737CA91bE5F65Ea7dd9"
 atomicSwap_contract = w3.eth.contract(address=atomicSwap_contract_address, abi=atomicSwap_abi)
 contract_list.append(atomicSwap_contract)
 weth_contract_address = "0x8Ed7F8Eca5535258AD520E32Ff6B8330A187641C"
 weth_contract = w3.eth.contract(address=weth_contract_address, abi=weth_abi)
-# contract_list.append(weth_contract)
+contract_list.append(weth_contract)
 
-
-
-
-# # Path to the 'abi' folder
-# abi_folder = 'abi'
-# import os
-# # Iterate through all files in the 'abi' folder
-# for filename in os.listdir(abi_folder):
-#     if filename.endswith('.json'):
-#         abi_path = os.path.join(abi_folder, filename)
-        
-#         # Load the ABI from the JSON file
-#         try:
-#             with open(abi_path, 'r') as abi_file:
-#                 abi_json = json.load(abi_file)
-#                 contract_abi = abi_json['abi']
-#         except (FileNotFoundError, json.JSONDecodeError) as e:
-#             print(f"Error loading ABI from {filename}: {e}. Skipping this file.")
-#             continue
-#         except KeyError:
-#             print(f"'abi' key not found in {filename}. Skipping this file.")
-#             continue
-        
-#         # Instantiate the contract with the common address and loaded ABI
-#         try:
-#             contract = w3.eth.contract(address=common_contract_address, abi=contract_abi)
-#             contract_list.append(contract)
-#             print(f"Loaded contract from {filename} at address {common_contract_address}.")
-#         except Exception as e:
-#             print(f"Error creating contract instance from {filename}: {e}. Skipping this file.")
 
 
 def get_contract_address(sender_address, nonce):
@@ -188,7 +158,85 @@ def send_signed_transaction(private_key, to_address, value, boost=0):
     # print(tx)
     return tx_hash.hex()
     
+def get_transaction(tx_hash: str):
+    """
+    Retrieves and formats transaction details based on the provided transaction hash.
+
+    :param tx_hash: The hash of the transaction to retrieve.
+    :return: A formatted string with transaction details or None if invalid.
+    """
+    # Validate the transaction hash format
+    if not re.fullmatch(r"0x[a-fA-F0-9]{64}", tx_hash):
+        print("Invalid transaction hash format.")
+        return None
+
+    # Send RPC request to get transaction details
+    tx_response = send_rpc_request("eth_getTransactionReceipt", [tx_hash])
+    print("status: ", tx_response.get('result')['status'])
+
+    tx_response = send_rpc_request("eth_getTransactionByHash", [tx_hash])
+
+    # Check if the transaction exists
+    if not tx_response.get("result"):
+        print("Transaction does not exist.")
+        return None
     
+    # print(tx_response)
+
+    tx = tx_response['result']
+    response_string = ""
+
+    try:
+        # Format Transaction Hash
+        response_string += f"Transaction Hash: {tx.get('hash')}\n"
+
+        # Format Transaction Index and Nonce
+        transaction_index = int(tx.get('transactionIndex', '0x0'), 16)
+        nonce = int(tx.get('nonce', '0x0'), 16)
+        response_string += f"Index: {transaction_index}, Nonce: {nonce}\n"
+
+        # Format From and To Addresses
+        response_string += f"From: {tx.get('from')}\n"
+        to_address = tx.get('to') if tx.get('to') else "Contract Creation"
+        response_string += f"To: {to_address}\n"
+
+        # Format Value
+        value = int(tx.get('value', '0x0'), 16)
+        if value == 0:
+            decoded_input = decode_transaction_input(tx_hash)
+            response_string += f"Input Data: {decoded_input}\n"
+        else:
+            response_string += f"Value: {value} wei\n"
+
+        # Format Gas Price
+        gas_price = int(tx.get('gasPrice', '0x0'), 16)
+        response_string += f"Gas Price: {gas_price} wei\n"
+
+        # Fetch Transaction Receipt for Gas Used and Block Number
+        receipt_response = send_rpc_request("eth_getTransactionReceipt", [tx_hash])
+        if receipt_response.get("result"):
+            receipt = receipt_response['result']
+            gas_used = int(receipt.get('gasUsed', '0x0'), 16)
+            block_number_hex = receipt.get('blockNumber', '0x0')
+            block_number = int(block_number_hex, 16)
+            response_string += f"Gas Used: {gas_used} units\n"
+            response_string += f"Block Number: {block_number}\n"
+        else:
+            response_string += "Gas Used: N/A\n"
+            response_string += "Block Number: N/A\n"
+
+        # Separator
+        response_string += "-----------------------------\n"
+
+        # Optional: Replace block number in hex with decimal if present in the response
+        # (Already handled above)
+
+    except Exception as e:
+        print(f"Error processing transaction data: {e}")
+        return None
+
+    return response_string
+
 
 def get_block(block_number):
     # gets the block number queried
@@ -270,6 +318,7 @@ if __name__ == "__main__":
         print("1: Send transaction (from address, to address, value = 200000 wei for now)")
         print("2: Get balance (address)")
         print("3: Get block details (number)")
+        print("4: Get transaction details (hash)") 
         request = input("What do you want to do?: ")
         try: 
             if request == '1':
@@ -299,6 +348,15 @@ if __name__ == "__main__":
                 block_number = int(input(f"Block number (latest is {w3.eth.block_number}): "))
                 response = get_block(block_number)
                 print(response)
+
+            if request == '4':
+                # New code for getting transaction details
+                tx_hash = input("Enter Transaction Hash (0x...): ")
+                transaction_details = get_transaction(tx_hash)
+                if transaction_details:
+                    print(transaction_details)
+                else:
+                    print("Failed to retrieve transaction details.")
                 
         except Exception as e:
             print(e)

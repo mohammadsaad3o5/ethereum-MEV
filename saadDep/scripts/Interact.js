@@ -68,39 +68,59 @@ async function main() {
 
     //Get the pair contract from factoryA
     const pairAddressA = await UniV2FactoryA.getPair(DAI_ADDRESS, WETH_ADDRESS);
-    let pairContractA = await addLiquidity(pairAddressA, DAI, WETH, DAIAmount/(4n), WETHAmount/(4n), deployerWallet);
-    // console.log("Reserves A");
+    let pairContractA = new ethers.Contract(pairAddressA, pairABI, deployerWallet);
+    // console.log("Reserves A (before liquidity)");
+    // console.log(await pairContractA.getReserves(), await pairContractA.kLast());
+
+    // pairContractA = await addLiquidity(pairAddressA, DAI, WETH, DAIAmount/(4n), WETHAmount/(4n), deployerWallet);
+    console.log("Reserves A (after adding liquidity)");
     pairContractA = new ethers.Contract(pairAddressA, pairABI, deployerWallet);
     console.log(await pairContractA.getReserves(), await pairContractA.kLast());
 
 
-
-    const swapPath = [WETH_ADDRESS, DAI_ADDRESS];
-    const recipient = deployerWallet.address;
+    let recipient = "0xD8F3183DEF51A987222D845be228e0Bbb932C222";
+    console.log("Balance of DAI before swap:", await DAI.balanceOf(recipient));
+    let swapPath = [WETH_ADDRESS, DAI_ADDRESS];
     const fromThis = false; // Using sender's balance
     
     // Execute the swap
-    const swapTx = await AtomicSwap.swap(
+    let swapTx = await AtomicSwap.swap(
         swapPath,
-        311313321,
+        1000,
         UniV2FactoryA,
         recipient,
         fromThis
     );
-    console.log("Swap transaction sent. Waiting for confirmation...");
-    const swapReceipt = await swapTx.wait();
+    console.log(`Swap transaction sent. Waiting for confirmation... ${swapTx.hash}`);
+    let swapReceipt = await swapTx.wait();
     console.log(`Swap completed in block ${swapReceipt.blockNumber}`);
+    console.log("Balance of DAI after swap:", await DAI.balanceOf(recipient));
 
     console.log("Reserves A (after tx)");
     console.log(await pairContractA.getReserves(), await pairContractA.kLast());
 
 
+    recipient = "0xD9211042f35968820A3407ac3d80C725f8F75c14";
+    const pairAddressB = await UniV2FactoryB.getPair(DAI_ADDRESS, WETH_ADDRESS);
+    // let pairContractB = await addLiquidity(pairAddressB, DAI, WETH, DAIAmount/(1n), WETHAmount/(8n), deployerWallet);
+    let pairContractB = new ethers.Contract(pairAddressB, pairABI, deployerWallet);
+    console.log("Balance of DAI before swap:", await DAI.balanceOf(recipient));
+    swapPath = [WETH_ADDRESS, DAI_ADDRESS];
 
-
-
+    
+    // Execute the swap
+    swapTx = await AtomicSwap.swap(
+        swapPath,
+        1000,
+        UniV2FactoryB,
+        recipient,
+        fromThis
+    );
+    console.log(`Swap transaction sent. Waiting for confirmation... ${swapTx.hash}`);
+    swapReceipt = await swapTx.wait();
+    console.log(`Swap completed in block ${swapReceipt.blockNumber}`);
+    console.log("Balance of DAI after swap:", await DAI.balanceOf("0xafF0CA253b97e54440965855cec0A8a2E2399896"));
     // Get pair contract from factoryB
-    pairAddressB = await UniV2FactoryB.getPair(DAI_ADDRESS, WETH_ADDRESS);
-    const pairContractB = await addLiquidity(pairAddressB, DAI, WETH, DAIAmount/(1n), WETHAmount/(8n), deployerWallet);
     console.log("Reserves B");
     console.log(await pairContractB.getReserves(), await pairContractB.kLast());
     
@@ -121,25 +141,13 @@ async function createPair(factoryContract, tokenA, tokenB, signer, factoryLabel)
         const tx = await factoryContract.createPair(tokenA, tokenB);
         console.log(`Transaction submitted: ${tx.hash}`);
         const receipt = await tx.wait();
-        console.log(`Pair created in Factory ${factoryLabel} with transaction hash: ${receipt.transactionHash}`);
+        console.log(`Pair created in Factory ${factoryLabel} with transaction hash: ${receipt.logs}`);
     } catch (error) {
         console.error(`Error creating pair in Factory ${factoryLabel}:`, error);
     }
 }
 
-async function executeSwap(contract) {
-  // Define the parameters
-  
-  try {
-    // Optional: Estimate gas
-    const gasEstimate = await contract.estimateGas.swap(amount0Out, amount1Out, to, data);
-    
-    console.log("GasEstimate", gasEstimate);
 
-  } catch (error) {
-    console.error("Error executing swap:", error);
-  }
-}
 // Mint DAI tokens
 async function mintDAI(DAIContract, toAddress, amount) {
     try {
@@ -157,7 +165,7 @@ async function mintDAI(DAIContract, toAddress, amount) {
         const tx = await DAIContract.mint(toAddress, mintAmount);
         console.log(`Transaction submitted: ${tx.hash}`);
         const receipt = await tx.wait();
-        console.log(`DAI minted with transaction hash: ${receipt.transactionHash}`);
+        console.log(`DAI minted with transaction hash: ${receipt.hash}`);
     } catch (error) {
         console.error("Error minting DAI:", error);
     }
@@ -182,7 +190,7 @@ async function mintWETH(WETHContract, amount, signer) {
         });
         console.log(`Transaction submitted: ${tx.hash}`);
         const receipt = await tx.wait();
-        console.log(`WETH minted with transaction hash: ${receipt.transactionHash}`);
+        console.log(`WETH minted with transaction hash: ${receipt.hash}`);
 
 
     } catch (error) {
@@ -195,14 +203,14 @@ async function approveToken(tokenContract, spenderAddress, amount, signer, token
     try {
         console.log(`Approving ${tokenLabel} for spending by ${spenderAddress}...`);
         const allowance = await tokenContract.allowance(signer.address, spenderAddress);
-        if (allowance > amount) {
+        if (allowance >= amount) {
             console.log(`${tokenLabel} already approved for spender ${spenderAddress}, skipping approval.`);
             return;
         }
         const tx = await tokenContract.approve(spenderAddress, amount);
         console.log(`Transaction submitted: ${tx.hash}`);
         const receipt = await tx.wait();
-        console.log(`${tokenLabel} approved with transaction hash: ${typeof(receipt)}`);
+        console.log(`${tokenLabel} approved with transaction hash: ${receipt.hash}`);
     } catch (error) {
         console.error(`Error approving ${tokenLabel}:`, error);
     }
