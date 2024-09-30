@@ -27,7 +27,7 @@ module.exports = {
   },
   networks: {
     local: {
-      url: 'http:/\/localhost:32848',
+      url: 'http:/\/localhost:33386',
       accounts: ['0xeaba42282ad33c8ef2524f07277c03a776d98ae19f581990ce75becb7cfa1c23']
     }
   }

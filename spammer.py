@@ -64,6 +64,7 @@ def wait_for_next_block():
     while curBlock == w3.eth.block_number:
         time.sleep(0.1)
     # block number changed
+    print(f"Sending these in block: {w3.eth.block_number}")
     return True
 
 

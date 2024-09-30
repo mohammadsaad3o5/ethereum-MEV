@@ -102,8 +102,8 @@ async function main() {
 
     recipient = "0xD9211042f35968820A3407ac3d80C725f8F75c14";
     const pairAddressB = await UniV2FactoryB.getPair(DAI_ADDRESS, WETH_ADDRESS);
-    // let pairContractB = await addLiquidity(pairAddressB, DAI, WETH, DAIAmount/(1n), WETHAmount/(8n), deployerWallet);
-    let pairContractB = new ethers.Contract(pairAddressB, pairABI, deployerWallet);
+    let pairContractB = await addLiquidity(pairAddressB, DAI, WETH, DAIAmount/(1n), WETHAmount/(8n), deployerWallet);
+    pairContractB = new ethers.Contract(pairAddressB, pairABI, deployerWallet);
     console.log("Balance of DAI before swap:", await DAI.balanceOf(recipient));
     swapPath = [WETH_ADDRESS, DAI_ADDRESS];
 
