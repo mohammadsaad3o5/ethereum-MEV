@@ -17,6 +17,8 @@
 package fetcher
 
 import (
+	"encoding/json" 
+    "os"
 	"errors"
 	"fmt"
 	"math"
@@ -205,13 +207,71 @@ type TxFetcher struct {
 	step  chan struct{} // Notification channel when the fetcher loop iterates
 	clock mclock.Clock  // Time wrapper to simulate in tests
 	rand  *mrand.Rand   // Randomizer to use in tests instead of map range loops (soft-random)
+
+	// Dedicated channel for transaction logging
+	txLogger chan *types.Transaction
+
+	// File handle for the transaction log
+	logFile *os.File
 }
 
 // NewTxFetcher creates a transaction fetcher to retrieve transaction
 // based on hash announcements.
-func NewTxFetcher(hasTx func(common.Hash) bool, addTxs func([]*types.Transaction) []error, fetchTxs func(string, []common.Hash) error, dropPeer func(string)) *TxFetcher {
+func NewTxFetcher(hasTx func(common.Hash) bool, addTxs func([]*types.Transaction) []error, fetchTxs func(string, []common.Hash) error, dropPeer func(string), logPath string, ) *TxFetcher {
 	return NewTxFetcherForTests(hasTx, addTxs, fetchTxs, dropPeer, mclock.System{}, nil)
 }
+
+// transactionLogger listens on the txLogger channel and writes transaction details to the log file.
+func (f *TxFetcher) transactionLogger() {
+    encoder := json.NewEncoder(f.logFile)
+    for tx := range f.txLogger {
+        // Serialize the transaction into a structured format
+        txJSON, err := serializeTransaction(tx)
+        if err != nil {
+            log.Error("Failed to serialize transaction", "error", err, "tx", tx.Hash().Hex())
+            continue
+        }
+
+		// **Log the serialized transaction to the application's logs**
+        log.Info("Serialized Transaction", "tx", txJSON)
+
+        // Write the serialized transaction as a JSON line
+        if err := encoder.Encode(txJSON); err != nil {
+            log.Error("Failed to write transaction to log file", "error", err, "tx", tx.Hash().Hex())
+            continue
+        }
+
+    }
+}
+
+
+// serializeTransaction converts a *types.Transaction into a serializable map.
+func serializeTransaction(tx *types.Transaction) (map[string]interface{}, error) {
+    // Retrieve the signer based on the transaction's chain ID
+    signer := types.LatestSignerForChainID(tx.ChainId())
+
+    // Retrieve the sender address
+    sender, err := types.Sender(signer, tx)
+    if err != nil {
+        return nil, fmt.Errorf("failed to get sender: %w", err)
+    }
+
+    // Prepare the base transaction details
+    txDetails := map[string]interface{}{
+        "hash":      tx.Hash().Hex(),
+        "nonce":     tx.Nonce(),
+        "gasPrice":  tx.GasPrice().String(),
+        "gasLimit":  tx.Gas(),
+        "to":        func() string { if tx.To() != nil { return tx.To().Hex() } else { return "Contract Creation" } }(),
+        "value":     tx.Value().String(),
+        "data":      fmt.Sprintf("0x%x", tx.Data()),
+        "sender":    sender.Hex(),
+        "timestamp": time.Now().Format(time.RFC3339),
+    }
+
+    return txDetails, nil
+}
+
 
 // NewTxFetcherForTests is a testing method to mock out the realtime clock with
 // a simulated version and the internal randomness with a deterministic one.
@@ -300,97 +360,103 @@ func (f *TxFetcher) isKnownUnderpriced(hash common.Hash) bool {
 	return ok
 }
 
-// Enqueue imports a batch of received transaction into the transaction pool
+// Enqueue imports a batch of received transactions into the transaction pool
 // and the fetcher. This method may be called by both transaction broadcasts and
 // direct request replies. The differentiation is important so the fetcher can
 // re-schedule missing transactions as soon as possible.
 func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) error {
-	var (
-		inMeter          = txReplyInMeter
-		knownMeter       = txReplyKnownMeter
-		underpricedMeter = txReplyUnderpricedMeter
-		otherRejectMeter = txReplyOtherRejectMeter
-	)
-	if !direct {
-		inMeter = txBroadcastInMeter
-		knownMeter = txBroadcastKnownMeter
-		underpricedMeter = txBroadcastUnderpricedMeter
-		otherRejectMeter = txBroadcastOtherRejectMeter
-	}
-	// Keep track of all the propagated transactions
-	inMeter.Mark(int64(len(txs)))
+    var (
+        inMeter          = txReplyInMeter
+        knownMeter       = txReplyKnownMeter
+        underpricedMeter = txReplyUnderpricedMeter
+        otherRejectMeter = txReplyOtherRejectMeter
+    )
+    if !direct {
+        inMeter = txBroadcastInMeter
+        knownMeter = txBroadcastKnownMeter
+        underpricedMeter = txBroadcastUnderpricedMeter
+        otherRejectMeter = txBroadcastOtherRejectMeter
+    }
+    // Keep track of all the propagated transactions
+    inMeter.Mark(int64(len(txs)))
 
-	// Push all the transactions into the pool, tracking underpriced ones to avoid
-	// re-requesting them and dropping the peer in case of malicious transfers.
-	var (
-		added = make([]common.Hash, 0, len(txs))
-		metas = make([]txMetadata, 0, len(txs))
-	)
-	// proceed in batches
-	for i := 0; i < len(txs); i += 128 {
-		end := i + 128
-		if end > len(txs) {
-			end = len(txs)
-		}
-		var (
-			duplicate   int64
-			underpriced int64
-			otherreject int64
-		)
-		batch := txs[i:end]
-
-		for j, err := range f.addTxs(batch) {
-			// Track the transaction hash if the price is too low for us.
-			// Avoid re-request this transaction when we receive another
-			// announcement.
-			if errors.Is(err, txpool.ErrUnderpriced) || errors.Is(err, txpool.ErrReplaceUnderpriced) {
-				f.underpriced.Add(batch[j].Hash(), batch[j].Time())
-			}
-			// Track a few interesting failure types
-			switch {
-			case err == nil: // Noop, but need to handle to not count these
-
-			case errors.Is(err, txpool.ErrAlreadyKnown):
-				duplicate++
-
-			case errors.Is(err, txpool.ErrUnderpriced) || errors.Is(err, txpool.ErrReplaceUnderpriced):
-				underpriced++
-
-			default:
-				otherreject++
-			}
-			added = append(added, batch[j].Hash())
-			log.Info("Value:")
-			log.Info(batch[j].Value().String())
-			log.Info("Nonce:", batch[j].Nonce(), "saad")
-			txData := batch[j].Data()
-			log.Info(fmt.Sprintf("0x%s", common.Bytes2Hex(txData)))
-			log.Info("Value:")
-			log.Info(batch[j].Value().String())
+	// **Log the number of transactions received**
+    log.Info("Enqueue called", "peer", peer, "num_txs", len(txs), "direct", direct)
 
 
-			metas = append(metas, txMetadata{
-				kind: batch[j].Type(),
-				size: uint32(batch[j].Size()),
-			})
-		}
-		knownMeter.Mark(duplicate)
-		underpricedMeter.Mark(underpriced)
-		otherRejectMeter.Mark(otherreject)
+    // Push all the transactions into the pool, tracking underpriced ones to avoid
+    // re-requesting them and dropping the peer in case of malicious transfers.
+    var (
+        added = make([]common.Hash, 0, len(txs))
+        metas = make([]txMetadata, 0, len(txs))
+    )
+    // Proceed in batches
+    for i := 0; i < len(txs); i += 128 {
+        end := i + 128
+        if end > len(txs) {
+            end = len(txs)
+        }
+        var (
+            duplicate   int64
+            underpriced int64
+            otherreject int64
+        )
+        batch := txs[i:end]
 
-		// If 'other reject' is >25% of the deliveries in any batch, sleep a bit.
-		if otherreject > 128/4 {
-			time.Sleep(200 * time.Millisecond)
-			log.Debug("Peer delivering stale transactions", "peer", peer, "rejected", otherreject)
-		}
-	}
-	select {
-	case f.cleanup <- &txDelivery{origin: peer, hashes: added, metas: metas, direct: direct}:
-		return nil
-	case <-f.quit:
-		return errTerminated
-	}
+        for j, err := range f.addTxs(batch) {
+            // Track the transaction hash if the price is too low for us.
+            // Avoid re-request this transaction when we receive another announcement.
+            if errors.Is(err, txpool.ErrUnderpriced) || errors.Is(err, txpool.ErrReplaceUnderpriced) {
+                f.underpriced.Add(batch[j].Hash(), batch[j].Time())
+            }
+            // Track a few interesting failure types
+            switch {
+            case err == nil:
+                // Noop, but need to handle to not count these
+
+            case errors.Is(err, txpool.ErrAlreadyKnown):
+                duplicate++
+
+            case errors.Is(err, txpool.ErrUnderpriced) || errors.Is(err, txpool.ErrReplaceUnderpriced):
+                underpriced++
+
+            default:
+                otherreject++
+            }
+            added = append(added, batch[j].Hash())
+            metas = append(metas, txMetadata{
+                kind: batch[j].Type(),
+                size: uint32(batch[j].Size()),
+            })
+
+            // **Log the transaction to the dedicated logger**
+            select {
+            case f.txLogger <- batch[j]:
+                // Successfully sent to logger
+            default:
+                // Channel is full; handle accordingly (e.g., drop the transaction or log a warning)
+                log.Warn("Transaction logger channel is full, dropping transaction", "tx", batch[j].Hash().Hex())
+            }
+        }
+        knownMeter.Mark(duplicate)
+        underpricedMeter.Mark(underpriced)
+        otherRejectMeter.Mark(otherreject)
+
+        // If 'other reject' is >25% of the deliveries in any batch, sleep a bit.
+        if otherreject > 128/4 {
+            time.Sleep(200 * time.Millisecond)
+            log.Debug("Peer delivering stale transactions", "peer", peer, "rejected", otherreject)
+        }
+    }
+    select {
+    case f.cleanup <- &txDelivery{origin: peer, hashes: added, metas: metas, direct: direct}:
+        return nil
+    case <-f.quit:
+        return errTerminated
+    }
 }
+
+
 
 // Drop should be called when a peer disconnects. It cleans up all the internal
 // data structures of the given node.
@@ -412,7 +478,9 @@ func (f *TxFetcher) Start() {
 // Stop terminates the announcement based synchroniser, canceling all pending
 // operations.
 func (f *TxFetcher) Stop() {
-	close(f.quit)
+	close(f.quit)        // Signal all goroutines to terminate
+    close(f.txLogger)    // Close the transaction logger channel to stop the logger goroutine
+    f.logFile.Close()    // Close the log file handle
 }
 
 func (f *TxFetcher) loop() {
