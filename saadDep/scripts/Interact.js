@@ -52,10 +52,10 @@ async function main() {
     await createPair(UniV2FactoryB, DAI_ADDRESS, WETH_ADDRESS, factoryAdminWallet, "B");
 
     // 2. Mint DAI tokens to deployer's address
-    await mintDAI(DAI, deployerWallet.address, mintAmount);
+    await mintDAI(DAI, deployerWallet.address, (5n)*mintAmount);
 
     // 3. Mint WETH by sending ETH to WETH9 contract
-    await mintWETH(WETH, mintAmount, deployerWallet);
+    await mintWETH(WETH, mintAmount*(5n), deployerWallet);
 
     const maxApprovalAmount = ethers.MaxUint256;
     // 4. Approve tokens for AtomicSwap router
@@ -69,11 +69,12 @@ async function main() {
     //Get the pair contract from factoryA
     const pairAddressA = await UniV2FactoryA.getPair(DAI_ADDRESS, WETH_ADDRESS);
     let pairContractA = new ethers.Contract(pairAddressA, pairABI, deployerWallet);
-    // console.log("Reserves A (before liquidity)");
-    // console.log(await pairContractA.getReserves(), await pairContractA.kLast());
+    console.log("Reserves A (before liquidity)");
+    console.log(await pairContractA.getReserves(), await pairContractA.kLast());
 
-    // pairContractA = await addLiquidity(pairAddressA, DAI, WETH, DAIAmount/(4n), WETHAmount/(4n), deployerWallet);
+    pairContractA = await addLiquidity(pairAddressA, DAI, WETH, DAIAmount, WETHAmount, deployerWallet);
     console.log("Reserves A (after adding liquidity)");
+   
     pairContractA = new ethers.Contract(pairAddressA, pairABI, deployerWallet);
     console.log(await pairContractA.getReserves(), await pairContractA.kLast());
 
@@ -83,6 +84,7 @@ async function main() {
     let swapPath = [WETH_ADDRESS, DAI_ADDRESS];
     const fromThis = false; // Using sender's balance
     
+    await wait(15000);  
     // Execute the swap
     let swapTx = await AtomicSwap.swap(
         swapPath,
@@ -102,12 +104,13 @@ async function main() {
 
     recipient = "0xD9211042f35968820A3407ac3d80C725f8F75c14";
     const pairAddressB = await UniV2FactoryB.getPair(DAI_ADDRESS, WETH_ADDRESS);
-    let pairContractB = await addLiquidity(pairAddressB, DAI, WETH, DAIAmount/(1n), WETHAmount/(8n), deployerWallet);
+    let pairContractB = await addLiquidity(pairAddressB, DAI, WETH, DAIAmount/(9n), WETHAmount/(10n), deployerWallet);
     pairContractB = new ethers.Contract(pairAddressB, pairABI, deployerWallet);
     console.log("Balance of DAI before swap:", await DAI.balanceOf(recipient));
     swapPath = [WETH_ADDRESS, DAI_ADDRESS];
 
-    
+ 
+    await wait(15000);  
     // Execute the swap
     swapTx = await AtomicSwap.swap(
         swapPath,
@@ -119,12 +122,17 @@ async function main() {
     console.log(`Swap transaction sent. Waiting for confirmation... ${swapTx.hash}`);
     swapReceipt = await swapTx.wait();
     console.log(`Swap completed in block ${swapReceipt.blockNumber}`);
-    console.log("Balance of DAI after swap:", await DAI.balanceOf("0xafF0CA253b97e54440965855cec0A8a2E2399896"));
+    console.log("Balance of DAI after swap:", await DAI.balanceOf(recipient));
     // Get pair contract from factoryB
     console.log("Reserves B");
     console.log(await pairContractB.getReserves(), await pairContractB.kLast());
     
 }
+
+
+function wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
 
 // Function to create a pair in a Uniswap V2 factory
 async function createPair(factoryContract, tokenA, tokenB, signer, factoryLabel) {

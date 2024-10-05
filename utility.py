@@ -22,7 +22,7 @@ import rlp
 0x991145EA701D75fC8352c32Ac8728A335F8f0fb9 - daiWethA // minted once (so call to contract) and rest used in calls
 0x3676554055b1c713A5A19C574baA3186B3DCB8d8 - daiWethB // minted once (so call to contract) and rest used in calls
 '''
-rpc_url = "http://localhost:33386"
+rpc_url = "http://localhost:33631"
 
 # 0x7ff1a4c1d57e5e784d327c4c7651e952350bc271f156afb3d00d20f5ef924856 - contract owner
 # 0x3a91003acaf4c21b3953d94fa4a6db694fa69e5242b2e37be05dd82761058899 - normal user
@@ -43,7 +43,8 @@ with open('jsons/AtomicSwap.json', 'r') as abi_file:
     atomicSwap_abi = json.load(abi_file)['abi']
 with open('jsons/WETH9.json', 'r') as abi_file:
     weth_abi = json.load(abi_file)['abi']
-
+with open('jsons/UniswapV2Pair.json', 'r') as abi_file:
+    pair_contract_abi = json.load(abi_file)['abi']
 
 
 # Load the contracts into a list
@@ -56,6 +57,13 @@ contract_list.append(atomicSwap_contract)
 weth_contract_address = "0x8Ed7F8Eca5535258AD520E32Ff6B8330A187641C"
 weth_contract = w3.eth.contract(address=weth_contract_address, abi=weth_abi)
 contract_list.append(weth_contract)
+pair_contractA_address = "0x5B177bEC59B41E9B14BC83662BAC7d187212443e"
+pair_contractA = w3.eth.contract(address=pair_contractA_address, abi=pair_contract_abi)
+contract_list.append(pair_contractA)
+pair_contractB_address = "0xD83BDeDDE3AdB58b335737bD0E8eb77E16695375"
+pair_contractB = w3.eth.contract(address=pair_contractB_address, abi=pair_contract_abi)
+contract_list.append(pair_contractB)
+
 
 
 
@@ -102,9 +110,10 @@ def decode_transaction_input(tx_hash):
     for contract in contract_list:
         try:
             decoded_input = contract.decode_function_input(input_data)
+          
             # see what functions are available through the contract
             # print_contract_functions_with_selectors(contract)
-            # print(contract.liquidate())
+            # print(contract.functions.arb().trasact(["0x8Ed7F8Eca5535258AD520E32Ff6B8330A187641C","0x120671CcDfEbC50Cfe7B7A62bd0593AA6E3F3cF0", "0x1212eE52Bc401cCA1BF752D7E13F78a4eb3EbBB3", "0x91BF7398aFc3d2691aA23799fdb9175EE2EB6105", "0x5B177bEC59B41E9B14BC83662BAC7d187212443e", "0xD83BDeDDE3AdB58b335737bD0E8eb77E16695375", 121]))
             return decoded_input
         except Exception as e:
             # print(str(e))
@@ -251,8 +260,13 @@ def get_block(block_number):
     elif 'result' in block_response:
         transactions = block_response['result']['transactions']
         # print(block_response)
+        # Send RPC request to get transaction details
         response_string += f"Transactions in block {block_number}:\n"
         for tx in transactions:
+            # See if transaction passed
+            tx_response = send_rpc_request("eth_getTransactionReceipt", [tx['hash']])
+            print("status: ", tx_response.get('result')['status'])
+
             response_string += f"Transaction Hash: {tx['hash']}\n"
             response_string += f"Index: {int(tx['transactionIndex'], 16)}, Nonce: {int(tx['nonce'], 16)}\n"
             response_string += f"From: {tx['from']}\n"
@@ -311,14 +325,28 @@ def pubKey_to_address(public_key_hex):
     # print("Derived Ethereum Address:", eth_address)
     return eth_address
 
+def get_exchange_rate():
+    pair = []
+    token0, token1, _ =  pair_contractA.functions.getReserves().call()
+
+    exchangeRate = (token0/token1)*0.997
+    pair.append(exchangeRate)
+    token0, token1, _ =  pair_contractB.functions.getReserves().call()
+    exchangeRate = (token0/token1)*0.997
+    pair.append(exchangeRate)
+
+    return tuple(pair)
+
 
 if __name__ == "__main__":
     while True:
+        tx = 0
         # if run as main, keep asking what you want to do
         print("1: Send transaction (from address, to address, value = 200000 wei for now)")
         print("2: Get balance (address)")
         print("3: Get block details (number)")
         print("4: Get transaction details (hash)") 
+        print("5: Get exchange rate on both pairs") 
         request = input("What do you want to do?: ")
         try: 
             if request == '1':
@@ -358,7 +386,40 @@ if __name__ == "__main__":
                 else:
                     print("Failed to retrieve transaction details.")
                 
+            if request == '5':    
+                pair = get_exchange_rate()
+                print(f"In pairA, the exchange rate is {pair[0]}")
+                print(f"In pairB, the exchange rate is {pair[1]}")
+
+
+            if request == '6':    
+                block = w3.eth.get_block('latest')
+                gas_limit = block['gasLimit']
+                print(f"Block Gas Limit: {gas_limit}")
+                # Load the private key
+                private_key = "0xeaba42282ad33c8ef2524f07277c03a776d98ae19f581990ce75becb7cfa1c23"
+
+                w3 = Web3(Web3.HTTPProvider(rpc_url))
+                sender_account = w3.eth.account.from_key(private_key)
+
+                w3.middleware_onion.add(construct_sign_and_send_raw_middleware(sender_account))
+                tx = w3.eth.contract(address=dai_contract_address, abi=dai_contract_abi).functions.approve("0xE25583099BA105D9ec0A67f5Ae86D90e50036425", 322).build_transaction({
+                'chainId': 3151908,  
+                'gasPrice':  w3.eth.gas_price, 
+                'nonce': 4
+                })
+                # estimated_gas = w3.eth.estimate_gas(tx)
+                # print("estimated gas is", estimated_gas)
+                tx["gas"] = 30000000
+
+                signed_txn = w3.eth.account.sign_transaction(tx, private_key=private_key)
+                tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+                tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+                print(tx)
+
+                
         except Exception as e:
+
             print(e)
 
 
@@ -419,3 +480,6 @@ if __name__ == "__main__":
     # function_selector = Web3.keccak(text=function_signature)[:4].hex()
 
     # print(function_selector)
+
+    # print_contract_functions_with_selectors(dai_contract)
+    
