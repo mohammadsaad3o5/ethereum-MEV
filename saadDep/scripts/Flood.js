@@ -63,9 +63,27 @@ async function main() {
     const pairAddressA = await UniV2FactoryA.getPair(DAI_ADDRESS, WETH_ADDRESS);
     let pairContractA = new ethers.Contract(pairAddressA, pairABI, deployerWallet);
 
-    // while (true) {
+    // Clear the balance of recipient before transactions
+    if (await WETH.balanceOf(recipientWallet.address) > 1n) {
+        bal = await WETH.balanceOf(recipientWallet.address);
+        tx = await WETH.connect(recipientWallet).transfer(AtomicSwap_ADDRESS, bal);
+        txReciept = await tx.wait()
+        console.log(`${bal} WETH cleared from recipient ${txReciept.hash}`)
+    }
+    if (await DAI.balanceOf(recipientWallet.address) > 1n) {
+        tx = await DAI.connect(recipientWallet).transfer(AtomicSwap_ADDRESS, await DAI.balanceOf(recipientWallet.address));
+        txReciept = await tx.wait()
+        console.log(`DAI cleared from recipient ${txReciept.hash}`)
+    }
+
+    const numTransactions = 1n;
+    let total = 0n;
+    for (let i = 0; i < numTransactions; i++) {
 
         balance = 100000000000n;
+        // How much DAI?
+        total += balance;
+
         console.log(`${blue}INFO:${reset} Recipient has ${balance} to work with`)
         // Balance of contract
         console.log(`AtomicSwap contract has ${await DAI.balanceOf(AtomicSwap_ADDRESS)} DAI, and ${await WETH.balanceOf(AtomicSwap_ADDRESS)} WETH`)
@@ -73,9 +91,12 @@ async function main() {
 
 
         // good info
-        console.log(`Total supply of WETH in the system is ${await WETH.totalSupply()}, and DAI is ${await DAI.totalSupply()}`);
+        // console.log(`Total supply of WETH in the system is ${await WETH.totalSupply()}, and DAI is ${await DAI.totalSupply()}`);
         const maxApprovalAmount = ethers.MaxUint256;
         console.log(`Balance of pairA before swap: ${await DAI.balanceOf(pairAddressA)} DAI, and ${await WETH.balanceOf(pairAddressA)} WETH` );
+
+        
+
         console.log(`Balance of recipient before swap: ${await DAI.balanceOf(recipient)} DAI, and ${await WETH.balanceOf(recipient)} WETH` );
 
         WETHbefore = await WETH.balanceOf(recipient);
@@ -89,13 +110,13 @@ async function main() {
         currentNonce = await provider.getTransactionCount(recipientWallet.address, "pending");
 
         //Get the pair contract from factoryA
-        console.log("Reserves A");
+        // console.log("Reserves A");
         pair = await pairContractA.getReserves();
-        console.log(pair[0], pair[1]);
+        // console.log(pair[0], pair[1]);
         exchangeRateA = ((pair[0]/pair[1])*(997n))/1000n;
 
         // May get rid of the percentage later to make it more accurate
-        console.log("Exchange rate:", exchangeRateA);
+        // console.log("Exchange rate:", exchangeRateA);
 
         console.log(`${blue}INFO:${reset} Sending swap transaction with ${swapPath}, ${balance}`)
         let swap = executeSwap (
@@ -110,11 +131,13 @@ async function main() {
         await Promise.all([swap]);
 
         console.log(`Balance of recipient after swap: ${await DAI.balanceOf(recipient)} DAI, and ${await WETH.balanceOf(recipient)} WETH`);
-        console.log(`Balance of contract after swap: ${await DAI.balanceOf(AtomicSwap_ADDRESS)} DAI, and ${await WETH.balanceOf(AtomicSwap_ADDRESS)} WETH`);
+        // console.log(`Balance of contract after swap: ${await DAI.balanceOf(AtomicSwap_ADDRESS)} DAI, and ${await WETH.balanceOf(AtomicSwap_ADDRESS)} WETH`);
         console.log(`Balance of pairA after swap: ${await DAI.balanceOf(pairAddressA)} DAI, and ${await WETH.balanceOf(pairAddressA)} WETH`);
+        await wait(2000);
 
-        await wait(13000);  
-    // }
+    }
+
+    console.log(`After ${numTransactions} transactions, user received ${await WETH.balanceOf(recipientWallet.address)} WETH for ${total} DAI`)
 
 }
 
@@ -148,7 +171,7 @@ async function executeSwap(swapPath, amountIn, factoryAddress, recipient, fromTh
         );
         console.log(`Swap transaction sent. Hash: ${swapTx.hash}`);
         const swapReceipt = await swapTx.wait();
-        console.log(`Swap transaction confirmed in block ${swapReceipt.blockNumber}`);
+        console.log(`Swap transaction confirmed in block ${yellow}${swapReceipt.blockNumber}${reset}`);
         console.log(`${blue}INFO:${reset} Swapped ${balance} DAI for ${await WETH.balanceOf(recipient) - WETHbefore} WETH`)
 
         return swapReceipt;
