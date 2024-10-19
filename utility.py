@@ -22,7 +22,7 @@ import rlp
 0x991145EA701D75fC8352c32Ac8728A335F8f0fb9 - daiWethA // minted once (so call to contract) and rest used in calls
 0x3676554055b1c713A5A19C574baA3186B3DCB8d8 - daiWethB // minted once (so call to contract) and rest used in calls
 '''
-rpc_url = "http://localhost:33880"
+rpc_url = "http://localhost:32857"
 
 # 0x7ff1a4c1d57e5e784d327c4c7651e952350bc271f156afb3d00d20f5ef924856 - contract owner
 # 0x3a91003acaf4c21b3953d94fa4a6db694fa69e5242b2e37be05dd82761058899 - normal user
@@ -247,13 +247,18 @@ def get_transaction(tx_hash: str):
     return response_string
 
 
-def get_block(block_number):
+def get_block(block_number, count = False):
     # gets the block number queried
     # forms a response string which is returned, None if the block is an invalid block
     block_number = hex(block_number)
     block_response = send_rpc_request("eth_getBlockByNumber", [block_number, True])
     response_string = ""
-    # print(block_response)
+
+    if count:
+        tuple_return = True
+    else:
+        tuple_return = False
+
     if block_response.get("result") == None:
         # print("Block doesn't exist")
         return None
@@ -262,10 +267,12 @@ def get_block(block_number):
         # print(block_response)
         # Send RPC request to get transaction details
         response_string += f"Transactions in block {block_number}:\n"
+        if count:
+            count = 0
         for tx in transactions:
             # See if transaction passed
-            tx_response = send_rpc_request("eth_getTransactionReceipt", [tx['hash']])
-            print("status: ", tx_response.get('result')['status'])
+            # tx_response = send_rpc_request("eth_getTransactionReceipt", [tx['hash']])
+            # print("status: ", tx_response.get('result')['status'])
 
             response_string += f"Transaction Hash: {tx['hash']}\n"
             response_string += f"Index: {int(tx['transactionIndex'], 16)}, Nonce: {int(tx['nonce'], 16)}\n"
@@ -278,6 +285,9 @@ def get_block(block_number):
             response_string += f"Gasprice: {int(tx['gasPrice'], 16)} wei\n"
             response_string += "-----------------------------\n"
 
+            # Count number of transactions
+            count += 1
+
         # to avoid trying to regex empty response
         hex_pattern_block = r"block 0x([0-9a-fA-F]+):"
 
@@ -287,8 +297,10 @@ def get_block(block_number):
             decimal = int(hex_block, 16)
             response_string = re.sub(hex_pattern_block, f'block {decimal}:', response_string)
         
-
-    return response_string
+    if tuple_return:
+        return(response_string, count)
+    else:
+        return response_string
 
 def get_balance(address):
     # queries the balance for an account 
@@ -326,13 +338,17 @@ def pubKey_to_address(public_key_hex):
     return eth_address
 
 def get_exchange_rate():
+    # Get exchage rates for both pairs
     pair = []
     token0, token1, _ =  pair_contractA.functions.getReserves().call()
-
     exchangeRate = (token0/token1)*0.997
     pair.append(exchangeRate)
     token0, token1, _ =  pair_contractB.functions.getReserves().call()
-    exchangeRate = (token0/token1)*0.997
+    if token1 == 0:
+        exchangeRate = 0
+    else:
+        exchangeRate = (token0/token1)*0.997
+
     pair.append(exchangeRate)
 
     return tuple(pair)

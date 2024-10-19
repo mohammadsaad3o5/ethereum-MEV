@@ -72,17 +72,28 @@ bribe = 0
 wait_for_next_block()
 
 # 17 transactions sent at 0.5s intervals
+# options = list(range(0, 19))
+# for i in range(17):
+#     # randomly pick one address
+#     idx_sender = choice(options)
+#     # ensure sender not same as receiver
+#     options.remove(idx_sender)
+#     idx_receiver = choice(options)
+#     spam(private_key[idx_sender], ethereum_address[idx_receiver], bribe, i)
+
+#     #increase bribe for the transactions coming in later
+#     bribe += 50000
+#     time.sleep(0.5)
+
+# 17 transactions sent at 0.5s intervals
 options = list(range(0, 19))
-for i in range(17):
+for i in range(10000):
     # randomly pick one address
-    idx_sender = choice(options)
+    idx_sender = options[1]
     # ensure sender not same as receiver
-    options.remove(idx_sender)
     idx_receiver = choice(options)
     spam(private_key[idx_sender], ethereum_address[idx_receiver], bribe, i)
-
     #increase bribe for the transactions coming in later
-    bribe += 50000
-    time.sleep(0.5)
-
+    # bribe += 50000
+    time.sleep(0.00000001)
 

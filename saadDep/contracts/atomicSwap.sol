@@ -25,9 +25,13 @@ contract AtomicSwap {
         _;
     }
     
-    receive() external payable {}
+    receive() external payable {
+        require(msg.value > 0, "Must send ETH");
+    }
 
-    fallback() external payable {}
+    fallback() external payable {
+        revert("Function does not exist");
+    }
 
     function liquidate() external onlyOwner {
         weth.transfer(owner, weth.balanceOf(address(this)));

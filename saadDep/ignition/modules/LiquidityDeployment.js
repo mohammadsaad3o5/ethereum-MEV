@@ -1,13 +1,3 @@
-// const { buildModule } = require("@nomicfoundation/hardhat-ignition/modules");
-// const { constants, BigNumber } = require("ethers");
-
-// module.exports = buildModule("LiquidDeployment", (m) => {
-//     // Deploy ERC20 tokens (DAI, WETH)
-//     const DAI =  m.contract("Dai", [3151908]);
-
-//     return {DAI}
-// });
-
 const { buildModule } = require("@nomicfoundation/hardhat-ignition/modules");
 
 module.exports = buildModule("LiquidDeployment", (m) => {

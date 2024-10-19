@@ -63,8 +63,10 @@ async function main() {
     await approveToken(WETH, AtomicSwap_ADDRESS, maxApprovalAmount, deployerWallet, "WETH");
 
     // Add liquidity
-    const DAIAmount = mintAmount;
-    const WETHAmount = mintAmount/(1300n);
+    // const DAIAmount = mintAmount;
+    // const WETHAmount = mintAmount/(1300n);
+    const DAIAmount = 100000n;
+    const WETHAmount = 250000n;
 
     //Get the pair contract from factoryA
     const pairAddressA = await UniV2FactoryA.getPair(DAI_ADDRESS, WETH_ADDRESS);
@@ -76,56 +78,56 @@ async function main() {
     console.log("Reserves A (after adding liquidity)");
    
     pairContractA = new ethers.Contract(pairAddressA, pairABI, deployerWallet);
-    console.log(await pairContractA.getReserves(), await pairContractA.kLast());
+    console.log(await pairContractA.getReserves());
 
 
-    let recipient = "0xD8F3183DEF51A987222D845be228e0Bbb932C222";
-    console.log("Balance of DAI before swap:", await DAI.balanceOf(recipient));
-    let swapPath = [WETH_ADDRESS, DAI_ADDRESS];
-    const fromThis = false; // Using sender's balance
+    // let recipient = "0xD8F3183DEF51A987222D845be228e0Bbb932C222";
+    // console.log("Balance of DAI before swap:", await DAI.balanceOf(recipient));
+    // let swapPath = [WETH_ADDRESS, DAI_ADDRESS];
+    // const fromThis = false; // Using sender's balance
     
-    await wait(15000);  
-    // Execute the swap
-    let swapTx = await AtomicSwap.swap(
-        swapPath,
-        1000,
-        UniV2FactoryA,
-        recipient,
-        fromThis
-    );
-    console.log(`Swap transaction sent. Waiting for confirmation... ${swapTx.hash}`);
-    let swapReceipt = await swapTx.wait();
-    console.log(`Swap completed in block ${swapReceipt.blockNumber}`);
-    console.log("Balance of DAI after swap:", await DAI.balanceOf(recipient));
+    // await wait(15000);  
+    // // Execute the swap
+    // let swapTx = await AtomicSwap.swap(
+    //     swapPath,
+    //     10000,
+    //     UniV2FactoryA,
+    //     recipient,
+    //     fromThis
+    // );
+    // console.log(`Swap transaction sent. Waiting for confirmation... ${swapTx.hash}`);
+    // let swapReceipt = await swapTx.wait();
+    // console.log(`Swap completed in block ${swapReceipt.blockNumber}`);
+    // console.log("Balance of DAI after swap:", await DAI.balanceOf(recipient));
 
-    console.log("Reserves A (after tx)");
-    console.log(await pairContractA.getReserves(), await pairContractA.kLast());
+    // console.log("Reserves A (after tx)");
+    // console.log(await pairContractA.getReserves());
 
 
-    recipient = "0xD9211042f35968820A3407ac3d80C725f8F75c14";
-    const pairAddressB = await UniV2FactoryB.getPair(DAI_ADDRESS, WETH_ADDRESS);
-    let pairContractB = await addLiquidity(pairAddressB, DAI, WETH, DAIAmount/(9n), WETHAmount/(10n), deployerWallet);
-    pairContractB = new ethers.Contract(pairAddressB, pairABI, deployerWallet);
-    console.log("Balance of DAI before swap:", await DAI.balanceOf(recipient));
-    swapPath = [WETH_ADDRESS, DAI_ADDRESS];
+    // recipient = "0xD9211042f35968820A3407ac3d80C725f8F75c14";
+    // const pairAddressB = await UniV2FactoryB.getPair(DAI_ADDRESS, WETH_ADDRESS);
+    // let pairContractB = await addLiquidity(pairAddressB, DAI, WETH, DAIAmount/(2n), WETHAmount/(10n), deployerWallet);
+    // pairContractB = new ethers.Contract(pairAddressB, pairABI, deployerWallet);
+    // console.log("Balance of DAI before swap:", await DAI.balanceOf(recipient));
+    // swapPath = [WETH_ADDRESS, DAI_ADDRESS];
 
  
-    await wait(15000);  
-    // Execute the swap
-    swapTx = await AtomicSwap.swap(
-        swapPath,
-        1000,
-        UniV2FactoryB,
-        recipient,
-        fromThis
-    );
-    console.log(`Swap transaction sent. Waiting for confirmation... ${swapTx.hash}`);
-    swapReceipt = await swapTx.wait();
-    console.log(`Swap completed in block ${swapReceipt.blockNumber}`);
-    console.log("Balance of DAI after swap:", await DAI.balanceOf(recipient));
-    // Get pair contract from factoryB
-    console.log("Reserves B");
-    console.log(await pairContractB.getReserves(), await pairContractB.kLast());
+    // await wait(15000);  
+    // // Execute the swap
+    // swapTx = await AtomicSwap.swap(
+    //     swapPath,
+    //     10000,
+    //     UniV2FactoryB,
+    //     recipient,
+    //     fromThis
+    // );
+    // console.log(`Swap transaction sent. Waiting for confirmation... ${swapTx.hash}`);
+    // swapReceipt = await swapTx.wait();
+    // console.log(`Swap completed in block ${swapReceipt.blockNumber}`);
+    // console.log("Balance of DAI after swap:", await DAI.balanceOf(recipient));
+    // // Get pair contract from factoryB
+    // console.log("Reserves B");
+    // console.log(await pairContractB.getReserves(), await pairContractB.kLast());
     
 }
 

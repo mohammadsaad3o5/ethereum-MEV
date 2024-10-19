@@ -4,13 +4,15 @@ import re
 
 end_reached = False
 block_number = 1
-
+count = 0
 while not end_reached:
     # Increment block number till end is reached
     # Don't print anything is block doesn't contain transactions
     hex_pattern_block = r"block 0x([0-9a-fA-F]+):"
-    current_block = get_block(block_number)
-    if current_block == None:
+    ret = get_block(block_number, True)
+    if ret is not None:
+        current_block, block_count = ret
+    else:
         end_reached = True
         break
     # to avoid trying to regex empty response
@@ -27,6 +29,8 @@ while not end_reached:
         current_block = re.sub(hex_pattern_value, f'Value: {decimal} wei', current_block)
     # Only print if there are transactions in this block
     if "Transaction Hash:" in current_block:
+        count += block_count
         print(current_block)
         
     block_number += 1
+print(f"Total transactions: {count}")
