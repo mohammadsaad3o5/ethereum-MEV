@@ -80,29 +80,6 @@ function calculateOutputAmount(reserveIn, reserveOut, amountIn) {
     return amountOut;
 }
 
-// function calculateOutputAmount(reserveA, reserveB, amountA_in) {
-//     /**
-//      * Calculate how many reserveB tokens will be provided when swapping reserveA tokens in a constant product AMM.
-//      *
-//      * :param reserveA: Initial reserve of token A (BigInt)
-//      * :param reserveB: Initial reserve of token B (BigInt)
-//      * :param amountA_in: Amount of token A to trade (BigInt)
-//      * :return: Amount of token B to be provided (BigInt)
-//      */
-
-//     reserveA = BigInt(reserveA);
-//     reserveB = BigInt(reserveB);
-//     amountA_in = BigInt(amountA_in);
-
-//     // Constant product formula: (reserveA + amountA_in) * new_reserveB = reserveA * reserveB
-//     const new_reserveB = (reserveA * reserveB) / (reserveA + amountA_in);
-
-//     // The amount of token B that will be provided is the difference between initial and new reserveB
-//     const amountB_out = reserveB - new_reserveB;
-
-//     return amountB_out;
-// }
-
 
 // Global scope
 let AtomicSwap;
@@ -115,7 +92,7 @@ async function main() {
     pairAddressA = await UniV2FactoryA.getPair(DAI_ADDRESS, WETH_ADDRESS);
     pairContractA = new ethers.Contract(pairAddressA, pairABI, deployerWallet);
 
-    const numTransactions = 10n;
+    const numTransactions = 5n;
     let total = [0n, 0n];
 
     // Transaction parameters 
@@ -125,7 +102,7 @@ async function main() {
     balanceDAIstart = await DAI.balanceOf(recipient);
     balanceWETHstart = await WETH.balanceOf(recipient);
     let recieptList = []
-    let expected = 0n;
+    let expected = 0;
     // let prevTransaction = 0n;
 
     // Call these here because state won't update fast enough to use these inside the loop
@@ -147,91 +124,42 @@ async function main() {
 
         // Calculate expected return
         // Want to take into account transactions made by user so as to not overestmiate revenue
-        // if (expected != 0n) {
-        //     // There has been a transaction made earlier, so add to expected? 
-        //     // I don't really know why this would be any differnt from the first case? Lemme test and remove this bit
-        //     if (swapPath[0] == DAI_ADDRESS) {
-        //         // DAI --> WETH
-        //         // Check what token0 is 
-        //         if (token0 == DAI_ADDRESS) {
-        //             // There's more DAI in the pool
-        //             expected += calculateOutputAmount(pair0, pair1, amt);
-        //             // Swapped amt DAI, so add to pair0 (cause more DAI), and subtract from pair1 (cause less WETH)
-        //             pair0 += amt;
-        //             pair1 -= calculateOutputAmount(pair0, pair1, amt);
-        //         } else {
-        //             // There's more WETH, so DAI is pair1 (token1)
-        //             expected += calculateOutputAmount(pair1, pair0, amt);
-        //             // Still swapped DAI, so add to DAI reserve and subtract from WETH reserve
-        //             // However the ordering of the pair is reversed so take that into account
-        //             pair1 += amt;
-        //             pair0 -= calculateOutputAmount(pair1, pair0, amt);
-        //         }
-        //     } else {
-        //         // WETH --> DAI
-        //         // Check what token0 is 
-        //         if (token0 == WETH_ADDRESS) {
-        //             // There's more WETH in the pool
-        //             expected += calculateOutputAmount(pair0, pair1, amt);
-        //             // Swapped amt WETH, so add to pair0 (cause more WETH), and subtract from pair1 (cause less DAI)
-        //             pair0 += amt;
-        //             pair1 -= calculateOutputAmount(pair0, pair1, amt);
-        //         } else {
-        //             // There's more DAI, so WETH is token1
-        //             expected += calculateOutputAmount(pair1, pair0, amt);
-        //             // Still swapped WETH, so add to WETH reserve and subtract from DAI reserve
-        //             // Ordering of pair is reversed
-        //             pair1 += amt;
-        //             pair0 -= calculateOutputAmount(pair1, pair0, amt);
-        //         }
-        //     }
-        //     // expected += calculateOutputAmount(pair0+total[0], pair1-(calculateOutputAmount(pair0, pair1, amt)), amt)
-        //     // expected += calculateOutputAmount(pair1, pair0, amt);
-        //     // pair1 -= (calculateOutputAmount(pair0, pair1, amt));
-        //     // pair0 += total[0]
-        //     // console.log(pair0, pair1);
-        // } else {
-
-
-        // First transaction being sent from the user, adjust reserves for future use
+        // Transaction being sent from the user, adjust reserves for future use
         if (swapPath[0] == DAI_ADDRESS) {
             // DAI --> WETH
             // Check what token0 is 
             if (token0 == DAI_ADDRESS) {
                 // There's more DAI in the pool
-                expected += calculateOutputAmount(pair0, pair1, amt);
+                expected += Math.floor(Math.floor(Number(calculateOutputAmount(pair0, pair1, amt)))*0.997);
                 // Swapped amt DAI, so add to pair0 (cause more DAI), and subtract from pair1 (cause less WETH)
                 pair0 += amt;
-                pair1 -= calculateOutputAmount(pair0, pair1, amt);
+                pair1 -= BigInt(Math.floor(Number(calculateOutputAmount(pair0, pair1, amt))));
             } else {
                 // There's more WETH, so DAI is pair1 (token1)
-                expected += calculateOutputAmount(pair1, pair0, amt);
+                expected += Math.floor(Math.floor(Number(calculateOutputAmount(pair1, pair0, amt)))*0.997);
                 // Still swapped DAI, so add to DAI reserve and subtract from WETH reserve
                 // However the ordering of the pair is reversed so take that into account
                 pair1 += amt;
-                pair0 -= calculateOutputAmount(pair1, pair0, amt);
+                pair0 -= BigInt(Math.floor(Number(calculateOutputAmount(pair1, pair0, amt))));
             }
         } else {
             // WETH --> DAI
             // Check what token0 is 
             if (token0 == WETH_ADDRESS) {
                 // There's more WETH in the pool
-                expected += calculateOutputAmount(pair0, pair1, amt);
+                expected += Math.floor(Math.floor(Number(calculateOutputAmount(pair0, pair1, amt)))*0.997);
                 // Swapped amt WETH, so add to pair0 (cause more WETH), and subtract from pair1 (cause less DAI)
                 pair0 += amt;
-                pair1 -= calculateOutputAmount(pair0, pair1, amt);
+                pair1 -= BigInt(Math.floor(Number(calculateOutputAmount(pair0, pair1, amt))));
             } else {
                 // There's more DAI, so WETH is token1
-                expected += calculateOutputAmount(pair1, pair0, amt);
+                expected += Math.floor(Math.floor(Number(calculateOutputAmount(pair1, pair0, amt)))*0.997);
                 // Still swapped WETH, so add to WETH reserve and subtract from DAI reserve
                 // Ordering of pair is reversed
                 pair1 += amt;
-                pair0 -= calculateOutputAmount(pair1, pair0, amt);
+                pair0 -= BigInt(Math.floor(Number(calculateOutputAmount(pair1, pair0, amt))));
             }
         }
-        // }
-        // console.log(amt, nonce + i);
-
         
         const fromThis = false; // Using sender's balance       
         // Execute the swap
@@ -244,11 +172,15 @@ async function main() {
                 nonce: nonce + i
             }
         );
-        console.log(`Swap transaction sent, hash: ${swapTx.hash}`);
+        console.log(`Swap transaction sent with amount ${amt}, nonce ${nonce + i}, hash: ${swapTx.hash}`);
+        // Will wait for the reciepts later after execution
         recieptList.push(swapTx)
+        // Keep track of total. Since I am only using it at the end don't care about the sizes of the reserves
         if (swapPath[0] == DAI_ADDRESS) {
+            // total[0] is DAI
             total[0] += amt;
         } else {
+            // total[1] is WETH
             total[1] += amt;
         }
     }
@@ -259,8 +191,10 @@ async function main() {
         console.log(`Swap ${swapReceipt.hash} completed in block ${await swapReceipt.blockNumber}`);
     }
 
-    // Account  for the fees
-    expected = Number(expected)*0.997;
+    // Accounted for the fees during calculation, make sure to account for small errors
+    if (numTransactions > 1n) {
+        expected = expected - Number(numTransactions);
+    }
     deltaDAI = await DAI.balanceOf(recipient) - balanceDAIstart;
     deltaWETH = await WETH.balanceOf(recipient) - balanceWETHstart;
     // How much was spent and exchanged
