@@ -18,6 +18,7 @@ async function main() {
     const provider = new ethers.JsonRpcProvider(hardhatConfig.networks['local']['url']);
     const deployerPrivateKey = "0xeaba42282ad33c8ef2524f07277c03a776d98ae19f581990ce75becb7cfa1c23";
     const factoryAdminPrivateKey = "0xdaf15504c22a352648a71ef2926334fe040ac1d5005019e09f6c979808024dc7";
+    const sandwichBotPrivateKey = "0x5d2344259f42259f82d2c140aa66102ba89b57b4883ee441a8b312622bd42491";
 
     if (!deployerPrivateKey || !factoryAdminPrivateKey) {
         throw new Error("Please set DEPLOYER_PRIVATE_KEY and FACTORY_ADMIN_PRIVATE_KEY in your .env file");
@@ -25,6 +26,7 @@ async function main() {
 
     const deployerWallet = new ethers.Wallet(deployerPrivateKey, provider);
     const factoryAdminWallet = new ethers.Wallet(factoryAdminPrivateKey, provider);
+    const sandwichBotWallet = new ethers.Wallet(sandwichBotPrivateKey, provider);
 
     console.log("Deployer address:", deployerWallet.address);
     console.log("Factory Admin address:", factoryAdminWallet.address);
@@ -38,11 +40,14 @@ async function main() {
     const AtomicSwap_ABI = require('../artifacts/contracts/atomicSwap.sol/AtomicSwap.json').abi;
 
     // Create contract instances connected to appropriate signers
+    const DAIsandwich = new ethers.Contract(DAI_ADDRESS, DAI_ABI, sandwichBotWallet);
     const DAI = new ethers.Contract(DAI_ADDRESS, DAI_ABI, deployerWallet);
+    const WETHsandwich = new ethers.Contract(WETH_ADDRESS, WETH_ABI, sandwichBotWallet);
     const WETH = new ethers.Contract(WETH_ADDRESS, WETH_ABI, deployerWallet);
     const UniV2FactoryA = new ethers.Contract(UniV2FactoryA_ADDRESS, UniV2Factory_ABI, factoryAdminWallet);
     const UniV2FactoryB = new ethers.Contract(UniV2FactoryB_ADDRESS, UniV2Factory_ABI, factoryAdminWallet);
     const AtomicSwap = new ethers.Contract(AtomicSwap_ADDRESS, AtomicSwap_ABI, deployerWallet);
+
 
     // Define the amount to mint (1000 tokens with 18 decimals)
     const mintAmount = ethers.parseUnits("1000", 18); // 1000 DAI/WETH with 18 decimals
@@ -51,16 +56,20 @@ async function main() {
     await createPair(UniV2FactoryA, DAI_ADDRESS, WETH_ADDRESS, factoryAdminWallet, "A");
     await createPair(UniV2FactoryB, DAI_ADDRESS, WETH_ADDRESS, factoryAdminWallet, "B");
 
-    // 2. Mint DAI tokens to deployer's address
+    // 2. Mint DAI tokens to deployer's address and sandwichBot
     await mintDAI(DAI, deployerWallet.address, (5n)*mintAmount);
+    await mintDAI(DAIsandwich, sandwichBotWallet.address, (5n)*mintAmount);
 
-    // 3. Mint WETH by sending ETH to WETH9 contract
+    // 3. Mint WETH by sending ETH to WETH9 contract and sandwichBot
     await mintWETH(WETH, mintAmount*(5n), deployerWallet);
+    await mintWETH(WETHsandwich, mintAmount*(5n), sandwichBotWallet);
 
     const maxApprovalAmount = ethers.MaxUint256;
-    // 4. Approve tokens for AtomicSwap router
+    // 4. Approve tokens for AtomicSwap router for both deployer and sandwichBot
     await approveToken(DAI, AtomicSwap_ADDRESS, maxApprovalAmount, deployerWallet, "DAI");
     await approveToken(WETH, AtomicSwap_ADDRESS, maxApprovalAmount, deployerWallet, "WETH");
+    await approveToken(DAI, AtomicSwap_ADDRESS, maxApprovalAmount, sandwichBotWallet, "DAI");
+    await approveToken(WETH, AtomicSwap_ADDRESS, maxApprovalAmount, sandwichBotWallet, "WETH");
 
     // Add liquidity
     // const DAIAmount = mintAmount;

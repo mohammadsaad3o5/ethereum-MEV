@@ -7,7 +7,7 @@ import traceback
 
 path = {"0x120671CcDfEbC50Cfe7B7A62bd0593AA6E3F3cF0": "DAI",
         "0x8Ed7F8Eca5535258AD520E32Ff6B8330A187641C": "WETH"}
-botAddress = "0xfDCe42116f541fc8f7b0776e2B30832bD5621C85"
+botAddress = "0x802dCbE1B1A97554B4F50DB5119E37E8e7336417"
 
 
 w3 = Web3(Web3.HTTPProvider(utility.rpc_url))
@@ -31,14 +31,15 @@ def monitor_txpool():
                         print(
                             f"New transaction detected: ",
                             f"Hash: {tx_hash}, From: {tx['from']}, To: {tx.get('to', 'Contract Creation')}, ",
-                            f"Value: {int(tx['value'], 16)} wei, gasPrice: {int(tx.get('gasPrice'), 16)-7}"
+                            f"Value: {int(tx['value'], 16)} wei, gasPrice: {int(tx.get('gasPrice'), 16)-7}, nonce {int(tx['nonce'], 16)}"
                         )
                         function_call = decode_transaction_input(tx_hash)
                         print(function_call)
                         # print(tx)
                         if "swap" in function_call[0].fn_name:
                             rates = utility.get_exchange_rate()
-                            if function_call[1]['recipient'] != botAddress:
+                            # print("Saad", function_call[1]['recipient'])
+                            if tx['from'].upper() != botAddress.upper():
                                 with open("arbitrage.txt", 'a') as file:
                                     print("arbitrage opportunity!")
                                     line = path.get(function_call[1]['path'][0]) + "," + path.get(function_call[1]['path'][1]) + "," + str(function_call[1]['amountIn']) + "," + str(int(tx.get('gasPrice', '0x0'), 16)-7) + "\n"

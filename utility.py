@@ -22,7 +22,7 @@ import rlp
 0x991145EA701D75fC8352c32Ac8728A335F8f0fb9 - daiWethA // minted once (so call to contract) and rest used in calls
 0x3676554055b1c713A5A19C574baA3186B3DCB8d8 - daiWethB // minted once (so call to contract) and rest used in calls
 '''
-rpc_url = "http://localhost:32857"
+rpc_url = "http://localhost:32892"
 
 # 0x7ff1a4c1d57e5e784d327c4c7651e952350bc271f156afb3d00d20f5ef924856 - contract owner
 # 0x3a91003acaf4c21b3953d94fa4a6db694fa69e5242b2e37be05dd82761058899 - normal user

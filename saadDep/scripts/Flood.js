@@ -54,28 +54,54 @@ function setup() {
     AtomicSwap = new ethers.Contract(AtomicSwap_ADDRESS, AtomicSwap_ABI, deployerWallet);
 }
 
-function calculateOutputAmount(reserveA, reserveB, amountA_in) {
+function calculateOutputAmount(reserveIn, reserveOut, amountIn) {
     /**
-     * Calculate how many reserveB tokens will be provided when swapping reserveA tokens in a constant product AMM.
+     * Calculate how many reserveOut tokens will be provided when swapping amountIn of reserveIn tokens in a constant product AMM.
      *
-     * :param reserveA: Initial reserve of token A (BigInt)
-     * :param reserveB: Initial reserve of token B (BigInt)
-     * :param amountA_in: Amount of token A to trade (BigInt)
-     * :return: Amount of token B to be provided (BigInt)
+     * :param reserveIn: Initial reserve of the input token (BigInt)
+     * :param reserveOut: Initial reserve of the output token (BigInt)
+     * :param amountIn: Amount of input token to trade (BigInt)
+     * :return: Amount of output token to be provided (BigInt)
      */
-
-    reserveA = BigInt(reserveA);
-    reserveB = BigInt(reserveB);
-    amountA_in = BigInt(amountA_in);
-
-    // Constant product formula: (reserveA + amountA_in) * new_reserveB = reserveA * reserveB
-    const new_reserveB = (reserveA * reserveB) / (reserveA + amountA_in);
-
-    // The amount of token B that will be provided is the difference between initial and new reserveB
-    const amountB_out = reserveB - new_reserveB;
-
-    return amountB_out;
+    
+    reserveIn = BigInt(reserveIn);
+    reserveOut = BigInt(reserveOut);
+    amountIn = BigInt(amountIn);
+    
+    // Update the input reserve with the incoming amount
+    const newReserveIn = reserveIn + amountIn;
+    
+    // Calculate the new output reserve using the constant product formula
+    const newReserveOut = (reserveIn * reserveOut) / newReserveIn;
+    
+    // The output amount is the difference between the old and new output reserves
+    const amountOut = reserveOut - newReserveOut;
+    
+    return amountOut;
 }
+
+// function calculateOutputAmount(reserveA, reserveB, amountA_in) {
+//     /**
+//      * Calculate how many reserveB tokens will be provided when swapping reserveA tokens in a constant product AMM.
+//      *
+//      * :param reserveA: Initial reserve of token A (BigInt)
+//      * :param reserveB: Initial reserve of token B (BigInt)
+//      * :param amountA_in: Amount of token A to trade (BigInt)
+//      * :return: Amount of token B to be provided (BigInt)
+//      */
+
+//     reserveA = BigInt(reserveA);
+//     reserveB = BigInt(reserveB);
+//     amountA_in = BigInt(amountA_in);
+
+//     // Constant product formula: (reserveA + amountA_in) * new_reserveB = reserveA * reserveB
+//     const new_reserveB = (reserveA * reserveB) / (reserveA + amountA_in);
+
+//     // The amount of token B that will be provided is the difference between initial and new reserveB
+//     const amountB_out = reserveB - new_reserveB;
+
+//     return amountB_out;
+// }
 
 
 // Global scope
@@ -89,8 +115,7 @@ async function main() {
     pairAddressA = await UniV2FactoryA.getPair(DAI_ADDRESS, WETH_ADDRESS);
     pairContractA = new ethers.Contract(pairAddressA, pairABI, deployerWallet);
 
-    nonce = await provider.getTransactionCount(recipientWallet.address, "pending")
-    const numTransactions = 1n;
+    const numTransactions = 10n;
     let total = [0n, 0n];
 
     // Transaction parameters 
@@ -101,20 +126,114 @@ async function main() {
     balanceWETHstart = await WETH.balanceOf(recipient);
     let recieptList = []
     let expected = 0n;
+    // let prevTransaction = 0n;
 
+    // Call these here because state won't update fast enough to use these inside the loop
+    nonce = await provider.getTransactionCount(recipientWallet.address, "pending")
+    pair = await pairContractA.getReserves();
+    token0 = await pairContractA.token0();
+    token1 = await pairContractA.token1();
+    pair0 = pair[0];
+    pair1 = pair[1];
+    
     for (let i = 0; i < numTransactions; i++) {
 
         // For me to distinguish the transactions
         amt = amt + BigInt(getRandomInt(1,100));
 
-        // Calculate expected return
-        pair = await pairContractA.getReserves();
-        expected += calculateOutputAmount(pair[0], pair[1], amt)
+        // Token swapping order
+        // let swapPath = [DAI_ADDRESS, WETH_ADDRESS];
+        let swapPath = [WETH_ADDRESS, DAI_ADDRESS];
 
-        console.log(amt, nonce + i);
-        let swapPath = [DAI_ADDRESS, WETH_ADDRESS];
-        const fromThis = false; // Using sender's balance       
+        // Calculate expected return
+        // Want to take into account transactions made by user so as to not overestmiate revenue
+        // if (expected != 0n) {
+        //     // There has been a transaction made earlier, so add to expected? 
+        //     // I don't really know why this would be any differnt from the first case? Lemme test and remove this bit
+        //     if (swapPath[0] == DAI_ADDRESS) {
+        //         // DAI --> WETH
+        //         // Check what token0 is 
+        //         if (token0 == DAI_ADDRESS) {
+        //             // There's more DAI in the pool
+        //             expected += calculateOutputAmount(pair0, pair1, amt);
+        //             // Swapped amt DAI, so add to pair0 (cause more DAI), and subtract from pair1 (cause less WETH)
+        //             pair0 += amt;
+        //             pair1 -= calculateOutputAmount(pair0, pair1, amt);
+        //         } else {
+        //             // There's more WETH, so DAI is pair1 (token1)
+        //             expected += calculateOutputAmount(pair1, pair0, amt);
+        //             // Still swapped DAI, so add to DAI reserve and subtract from WETH reserve
+        //             // However the ordering of the pair is reversed so take that into account
+        //             pair1 += amt;
+        //             pair0 -= calculateOutputAmount(pair1, pair0, amt);
+        //         }
+        //     } else {
+        //         // WETH --> DAI
+        //         // Check what token0 is 
+        //         if (token0 == WETH_ADDRESS) {
+        //             // There's more WETH in the pool
+        //             expected += calculateOutputAmount(pair0, pair1, amt);
+        //             // Swapped amt WETH, so add to pair0 (cause more WETH), and subtract from pair1 (cause less DAI)
+        //             pair0 += amt;
+        //             pair1 -= calculateOutputAmount(pair0, pair1, amt);
+        //         } else {
+        //             // There's more DAI, so WETH is token1
+        //             expected += calculateOutputAmount(pair1, pair0, amt);
+        //             // Still swapped WETH, so add to WETH reserve and subtract from DAI reserve
+        //             // Ordering of pair is reversed
+        //             pair1 += amt;
+        //             pair0 -= calculateOutputAmount(pair1, pair0, amt);
+        //         }
+        //     }
+        //     // expected += calculateOutputAmount(pair0+total[0], pair1-(calculateOutputAmount(pair0, pair1, amt)), amt)
+        //     // expected += calculateOutputAmount(pair1, pair0, amt);
+        //     // pair1 -= (calculateOutputAmount(pair0, pair1, amt));
+        //     // pair0 += total[0]
+        //     // console.log(pair0, pair1);
+        // } else {
+
+
+        // First transaction being sent from the user, adjust reserves for future use
+        if (swapPath[0] == DAI_ADDRESS) {
+            // DAI --> WETH
+            // Check what token0 is 
+            if (token0 == DAI_ADDRESS) {
+                // There's more DAI in the pool
+                expected += calculateOutputAmount(pair0, pair1, amt);
+                // Swapped amt DAI, so add to pair0 (cause more DAI), and subtract from pair1 (cause less WETH)
+                pair0 += amt;
+                pair1 -= calculateOutputAmount(pair0, pair1, amt);
+            } else {
+                // There's more WETH, so DAI is pair1 (token1)
+                expected += calculateOutputAmount(pair1, pair0, amt);
+                // Still swapped DAI, so add to DAI reserve and subtract from WETH reserve
+                // However the ordering of the pair is reversed so take that into account
+                pair1 += amt;
+                pair0 -= calculateOutputAmount(pair1, pair0, amt);
+            }
+        } else {
+            // WETH --> DAI
+            // Check what token0 is 
+            if (token0 == WETH_ADDRESS) {
+                // There's more WETH in the pool
+                expected += calculateOutputAmount(pair0, pair1, amt);
+                // Swapped amt WETH, so add to pair0 (cause more WETH), and subtract from pair1 (cause less DAI)
+                pair0 += amt;
+                pair1 -= calculateOutputAmount(pair0, pair1, amt);
+            } else {
+                // There's more DAI, so WETH is token1
+                expected += calculateOutputAmount(pair1, pair0, amt);
+                // Still swapped WETH, so add to WETH reserve and subtract from DAI reserve
+                // Ordering of pair is reversed
+                pair1 += amt;
+                pair0 -= calculateOutputAmount(pair1, pair0, amt);
+            }
+        }
+        // }
+        // console.log(amt, nonce + i);
+
         
+        const fromThis = false; // Using sender's balance       
         // Execute the swap
         let swapTx = await AtomicSwap.swap(
             swapPath,
@@ -150,9 +269,6 @@ async function main() {
 
 }
 
-function wait(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 function getRandomInt(min, max) {
     min = Math.ceil(min);
@@ -168,111 +284,4 @@ main()
     });
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// May get rid of the percentage later to make it more accurate
-// console.log("Exchange rate:", exchangeRateA);
-
-// console.log(`${blue}INFO:${reset} Sending swap transaction with ${swapPath}, ${balance}`)
-// let swap = executeSwap (
-//     swapPath,
-//     balance,
-//     UniV2FactoryA_ADDRESS,
-//     recipient,
-//     fromThis,
-//     currentNonce 
-// )
-
-// await Promise.all([swap]);
-
-// console.log(`Balance of recipient after swap: ${await DAI.balanceOf(recipient)} DAI, and ${await WETH.balanceOf(recipient)} WETH`);
-// // console.log(`Balance of contract after swap: ${await DAI.balanceOf(AtomicSwap_ADDRESS)} DAI, and ${await WETH.balanceOf(AtomicSwap_ADDRESS)} WETH`);
-// console.log(`Balance of pairA after swap: ${await DAI.balanceOf(pairAddressA)} DAI, and ${await WETH.balanceOf(pairAddressA)} WETH`);
-
-
-// async function executeSwap(swapPath, amountIn, factoryAddress, recipient, fromThis, gasPrice, nonce) {
-//     try {
-//         const swapTx = await AtomicSwap.connect(recipientWallet).swap(
-//             swapPath,
-//             amountIn,
-//             factoryAddress,
-//             recipient,
-//             fromThis,
-//             {
-//                 // gasPrice: 301,
-//                 nonce: nonce
-//             }
-//         );
-//         console.log(`Swap transaction sent. Hash: ${swapTx.hash}`);
-//         const swapReceipt = await swapTx.wait();
-//         console.log(`Swap transaction confirmed in block ${yellow}${swapReceipt.blockNumber}${reset}`);
-//         console.log(`${blue}INFO:${reset} Swapped ${balance} DAI for ${await WETH.balanceOf(recipient) - WETHbefore} WETH`)
-
-//         return swapReceipt;
-//     } catch (error) {
-//         console.error(`Error executing swap with path ${swapPath}:`, error);
-//         throw error; // Rethrow to let the caller handle it
-//     }
-// }
-
-// // Add liquidity to the DAI/WETH pair
-// async function addLiquidity(pairAddress, tokenAContract, tokenBContract, amountA, amountB, signer) {
-//     try {
-//         console.log(`\n--- Adding Liquidity ---`);
-//         console.log(`Pair Address: ${pairAddress}`);
-//         console.log(`Token A: ${tokenAContract}`);
-//         console.log(`Token B: ${tokenBContract}`);
-//         console.log(`Amount A (DAI): ${amountA}`);
-//         console.log(`Amount B (WETH): ${amountB}`);
-
-//         const balanceA = await tokenAContract.balanceOf(signer.address);
-//         const balanceB = await tokenBContract.balanceOf(signer.address);
-//         console.log(`TokenA Balance: ${balanceA} DAI`);
-//         console.log(`TokenB Balance: ${balanceB} WETH`);
-
-//         if (balanceA < amountA) {
-//             throw new Error(`Insufficient TokenA balance. Required: ${ethers.formatUnits(amountA, 18)}, Available: ${balanceA}`);
-//         }
-
-//         if (balanceB < amountB) {
-//             throw new Error(`Insufficient TokenB balance. Required: ${ethers.formatUnits(amountB, 18)}, Available: ${balanceB}`);
-//         }
-
-//         // Transfer TokenA to the pair contract
-//         console.log(`Transferring ${amountA} DAI to Pair Address: ${pairAddress}`);
-//         // Transfer TokenA to the pair contract
-//         let tx = await tokenAContract.connect(signer).transfer(pairAddress, amountA);
-//         await tx.wait();
-
-//         console.log(`Transferring ${amountB} WETH to Pair Address: ${pairAddress}`);
-//         // Transfer TokenB to the pair contract
-//         tx = await tokenBContract.connect(signer).transfer(pairAddress, amountB);
-//         await tx.wait();
-
-//         // Create an instance of the pair contract
-//         const pairContract = new ethers.Contract(pairAddress, pairABI, signer);
-
-//         // Call mint on the pair contract
-//         tx = await pairContract.mint(signer.address);
-//         await tx.wait();
-//         console.log(`Liquidity tokens minted and sent to ${pairAddress}`);
-
-//         // Return the pair contract instantiated
-//         return pairContract;
-//     } catch (error) {
-//         console.error("Error adding liquidity:", error);
-//     }
-// }
 
