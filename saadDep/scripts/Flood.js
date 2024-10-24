@@ -92,7 +92,7 @@ async function main() {
     pairAddressA = await UniV2FactoryA.getPair(DAI_ADDRESS, WETH_ADDRESS);
     pairContractA = new ethers.Contract(pairAddressA, pairABI, deployerWallet);
 
-    const numTransactions = 5n;
+    const numTransactions = 1n;
     let total = [0n, 0n];
 
     // Transaction parameters 

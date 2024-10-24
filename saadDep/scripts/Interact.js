@@ -58,11 +58,11 @@ async function main() {
 
     // 2. Mint DAI tokens to deployer's address and sandwichBot
     await mintDAI(DAI, deployerWallet.address, (5n)*mintAmount);
-    await mintDAI(DAIsandwich, sandwichBotWallet.address, (5n)*mintAmount);
+    await mintDAI(DAI, sandwichBotWallet.address, (5n)*mintAmount);
 
     // 3. Mint WETH by sending ETH to WETH9 contract and sandwichBot
     await mintWETH(WETH, mintAmount*(5n), deployerWallet);
-    await mintWETH(WETHsandwich, mintAmount*(5n), sandwichBotWallet);
+    await mintWETH(WETH, mintAmount*(5n), sandwichBotWallet);
 
     const maxApprovalAmount = ethers.MaxUint256;
     // 4. Approve tokens for AtomicSwap router for both deployer and sandwichBot

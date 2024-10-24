@@ -32,40 +32,63 @@ async function main() {
     let recipient = recipientWallet.address;
     await approveToken(DAI, AtomicSwap_ADDRESS, ethers.MaxUint256, deployerWallet, "DAI");
     await approveToken(WETH, AtomicSwap_ADDRESS, ethers.MaxUint256, deployerWallet, "WETH");
-        
+    let prevBlockNumber = await provider.getBlockNumber();
+    let blockChangedAt = Date.now();
+    console.log(`Starting block number: ${prevBlockNumber}`);
+
     while (true) {
-        // Make sure its the same (idk what this was referring to? probably removed it)
+
+        let currentBlockNumber = await provider.getBlockNumber();
+        if (currentBlockNumber != prevBlockNumber) {
+            console.log(`Block number changed from ${prevBlockNumber} to ${currentBlockNumber}`);
+            prevBlockNumber = currentBlockNumber;
+            blockChangedAt = Date.now();
+        }
 
         read = false;
         while (!read) {
             await wait(1500);
+
             // Read and log the arbitrage.txt file
             lines = await readArbitrageFile("/home/ubuntu/ethereum-MEV/arbitrage.txt");
-            // Need to make sure if there's more than one transaction in the same block doesn't reuse the nonces
-            // If I end up batching the transactions then I won't need this
-            prevNonce = 0;
-            currentNonce = await provider.getTransactionCount(deployerWallet.address, "pending");
-            if (currentNonce != prevNonce) {
-                step = 0;
-                prevNonce = currentNonce
-            }
+            
             // Parameter for transaction batching 
 
             linesRecheck = await readArbitrageFile("/home/ubuntu/ethereum-MEV/arbitrage.txt");
+            let elapsedTime = (Date.now() - blockChangedAt) / 1000; // in seconds
             if (JSON.stringify(lines) !== JSON.stringify(linesRecheck)) {
                 // Reaching here means transaction just got added
                 // So don't clear the file just yet, wait for it to refresh again and see if more transactions can be batched
                 // Might add in a counter to make sure it doesn't just wait for transactions forever
                 read = false;
-                console.log("transaction batching", lines, linesRecheck, lines === linesRecheck)
+                console.log("Transaction batching", lines, linesRecheck);
+                
+                // If elapsed time is greater than 8 seconds then finish bathching, and send it
+                if (elapsedTime > 7.5) {
+                    console.log("8 seconds have passed and so send whatever is there")
+                    read = true;
+                }
             } else {
                 // Nothing got added so lets go
+                // Proceed to send transactions
+                console.log(`Elapsed time since block change is ${elapsedTime}s, proceeding to send transactions.`);
                 read = true;
-                clearArbitrageFile("/home/ubuntu/ethereum-MEV/arbitrage.txt");
-                // console.log("No transactions added in the frame so clear arbitrage file and move on")
+                // Need to make sure if there's more than one transaction in the same block doesn't reuse the nonces
+                // If I end up batching the transactions then I won't need this
+                prevNonce = 0;
+                currentNonce = await provider.getTransactionCount(deployerWallet.address, "pending");
+                if (currentNonce != prevNonce) {
+                    step = 0;
+                    prevNonce = currentNonce
+                }
             }
+            clearArbitrageFile("/home/ubuntu/ethereum-MEV/arbitrage.txt");
+                // read = true;
+                // clearArbitrageFile("/home/ubuntu/ethereum-MEV/arbitrage.txt");
+                // // console.log("No transactions added in the frame so clear arbitrage file and move on")
         }
 
+        console.log("If you see this, transactions should start getting printed")
 
         balanceDAIstart = await DAI.balanceOf(recipient);
         balanceWETHstart = await WETH.balanceOf(recipient);
@@ -75,7 +98,7 @@ async function main() {
         for (const line of lines) {  
             // Need this to ensure the transactions aren't being nonce limited
             numTransactions = lines.length;
-            console.log(numTransactions)
+            console.log(numTransactions, line)
             balance = 3000n;
             balance = balance + BigInt(getRandomInt(1,100));
             total += balance;
@@ -157,7 +180,6 @@ async function main() {
         }
         
     }
-    
 
 }
 
