@@ -264,16 +264,17 @@ def get_block(block_number, count = False):
         return None
     elif 'result' in block_response:
         transactions = block_response['result']['transactions']
-        print(block_response)
+        # print(block_response)
+        
         # Send RPC request to get transaction details
         response_string += f"Transactions in block {block_number}:\n"
         if count:
             count = 0
         for tx in transactions:
             # See if transaction passed
-            # tx_response = send_rpc_request("eth_getTransactionReceipt", [tx['hash']])
-            # print("status: ", tx_response.get('result')['status'])
-
+            tx_response = send_rpc_request("eth_getTransactionReceipt", [tx['hash']])
+            status = tx_response.get('result')['status']
+            
             response_string += f"Transaction Hash: {tx['hash']}\n"
             response_string += f"Index: {int(tx['transactionIndex'], 16)}, Nonce: {int(tx['nonce'], 16)}\n"
             response_string += f"From: {tx['from']}\n"
@@ -283,6 +284,7 @@ def get_block(block_number, count = False):
             else:
                 response_string += f"Value: {int(tx['value'], 16)} wei\n"
             response_string += f"Gasprice: {int(tx['gasPrice'], 16)} wei\n"
+            response_string += f"Status: {status}\n"
             response_string += "-----------------------------\n"
 
             # Count number of transactions
