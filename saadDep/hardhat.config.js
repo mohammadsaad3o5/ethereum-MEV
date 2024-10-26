@@ -21,13 +21,16 @@ module.exports = {
         version: "0.5.12", 
       },
       {
+        version: "0.6.6", 
+      },
+      {
         version: "0.4.18", 
       },
     ],
   },
   networks: {
     local: {
-      url: 'http:/\/localhost:32888',
+      url: 'http:/\/localhost:33028',
       accounts: ['0xeaba42282ad33c8ef2524f07277c03a776d98ae19f581990ce75becb7cfa1c23']
     }
   }

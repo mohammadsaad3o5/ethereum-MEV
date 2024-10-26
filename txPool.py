@@ -5,8 +5,8 @@ from web3 import Web3
 import os
 import traceback
 
-path = {"0x120671CcDfEbC50Cfe7B7A62bd0593AA6E3F3cF0": "DAI",
-        "0x8Ed7F8Eca5535258AD520E32Ff6B8330A187641C": "WETH"}
+path = {"0x4bF8D2E79E33cfd5a8348737CA91bE5F65Ea7dd9": "DAI",
+        "0x91BF7398aFc3d2691aA23799fdb9175EE2EB6105": "WETH"}
 botAddress = "0x802dCbE1B1A97554B4F50DB5119E37E8e7336417"
 
 
@@ -38,10 +38,10 @@ def monitor_txpool():
                         # print(tx)
                         if "swap" in function_call[0].fn_name:
                             rates = utility.get_exchange_rate()
-                            # print("Saad", function_call[1]['recipient'])
                             if tx['from'].upper() != botAddress.upper():
                                 with open("arbitrage.txt", 'a') as file:
                                     print("arbitrage opportunity!")
+
                                     line = path.get(function_call[1]['path'][0]) + "," + path.get(function_call[1]['path'][1]) + "," + str(function_call[1]['amountIn']) + "," + str(int(tx.get('gasPrice', '0x0'), 16)-7) + "\n"
                                     file.write(line)
 

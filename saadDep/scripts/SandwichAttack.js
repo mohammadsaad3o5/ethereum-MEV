@@ -7,7 +7,7 @@ const fs = require('fs').promises;
 
 // Contract ABIs and addresses
 const DAI_ADDRESS = "0x120671CcDfEbC50Cfe7B7A62bd0593AA6E3F3cF0"; 
-const WETH_ADDRESS = "0x8Ed7F8Eca5535258AD520E32Ff6B8330A187641C";
+const WETH_ADDRESS = "0xB74Bb6AE1A1804D283D17e95620dA9b9b0E6E0DA";
 const UniV2FactoryA_ADDRESS = "0x1212eE52Bc401cCA1BF752D7E13F78a4eb3EbBB3"; 
 const AtomicSwap_ADDRESS = "0x4bF8D2E79E33cfd5a8348737CA91bE5F65Ea7dd9"; 
 const pairABI = require('/home/ubuntu/ethereum-MEV/saadDep/artifacts/@uniswap/v2-core/contracts/UniswapV2Pair.sol/UniswapV2Pair.json').abi;
@@ -19,14 +19,15 @@ async function main() {
 
     setup();    
 
-    let balance = 3000n;
-    console.log(`INFO: Bot has ${balance} (per transaction) to work with`)
+    // let balance = 3000n;
+    // console.log(`INFO: Bot has ${balance} (per transaction) to work with`)
     // Balance of contract
     // console.log(`AtomicSwap contract has ${await DAI.balanceOf(AtomicSwap_ADDRESS)} DAI, and ${await WETH.balanceOf(AtomicSwap_ADDRESS)} WETH`)
 
     //Get the pair contract from factoryA
     const pairAddressA = await UniV2FactoryA.getPair(DAI_ADDRESS, WETH_ADDRESS);
     let pairContractA = new ethers.Contract(pairAddressA, pairABI, deployerWallet);
+    // console.log(pairAddressA);
 
     // Not the same as the flooder
     let recipient = recipientWallet.address;
@@ -76,17 +77,18 @@ async function main() {
         for (const line of lines) {  
             // Need this to ensure the transactions aren't being nonce limited
             numTransactions = lines.length;
-            console.log(numTransactions)
-            balance = 3000n;
-            balance = balance + BigInt(getRandomInt(1,100));
-            total += balance;
+            // console.log(numTransactions)
             // get the deets
             lineArr = line.split(",");
             tokenA = lineArr[0];
             tokenB = lineArr[1];
             amount = Number(lineArr[2]);
             gasPrice = Number(lineArr[3]);
-            
+
+            // Keep track of the total 
+            balance = BigInt(amount);
+            balance = balance + BigInt(getRandomInt(1,100));
+            total += balance;
 
             let swapPath;
             let reverse;
@@ -104,20 +106,8 @@ async function main() {
             //Get the pair contract from factoryA
             // console.log("Reserves A", currentNonce);
             pair = await pairContractA.getReserves();
-            // console.log(pair[0], pair[1]);
 
-            // if the inital transaction was WETH to DAI then use the balance from DAI difference
-            if (tokenA === "DAI") {
-                // balance = await DAI.balanceOf(recipient) - DAIbefore;
-                // DAI was user transaction
-                // WETH -> DAI made first, hence change back DAI -> WETH
-                balance = calculateOutputAmount(pair[0], pair[1], amount);
-            } else {
-                // balance = await WETH.balanceOf(recipient) - WETHbefore;
-                balance = calculateOutputAmount(pair[1], pair[0], amount);
-            }
-            // add up the change
-            expected += balance;
+            
 
 
             console.log(`INFO: Sending swap transaction with ${swapPath}, ${balance}, gasPrice ${gasPrice + 1}, nonce:${currentNonce + step}`)
@@ -133,7 +123,19 @@ async function main() {
                 } 
             )
             // console.log(`Swap transaction sent. ${swap1.hash}`);
-            
+
+            // if the inital transaction was WETH to DAI then use the balance from DAI difference
+            if (tokenA === "DAI") {
+                // balance = await DAI.balanceOf(recipient) - DAIbefore;
+                // DAI was user transaction
+                // WETH -> DAI made first, hence change back DAI -> WETH
+                balance = calculateExactOutputAmount(pair[0], pair[1], balance);
+            } else {
+                // balance = await WETH.balanceOf(recipient) - WETHbefore;
+                balance = calculateExactOutputAmount(pair[1], pair[0], balance);
+            }
+            // add up the change
+            expected += balance;
 
             console.log(`INFO: Sending swap transaction with ${reverse}, ${balance}, gasPrice ${gasPrice - 1}, nonce:${currentNonce + step + numTransactions}`)
             let swap2 = AtomicSwap.swap(
@@ -220,30 +222,29 @@ function setup() {
     
 }
 
-function calculateOutputAmount(reserveA, reserveB, amountA_in) {
+function calculateExactOutputAmount(reserveIn, reserveOut, amountIn) {
     /**
-     * Calculate how many reserveB tokens will be provided when swapping reserveA tokens in a constant product AMM.
-     *
-     * :param reserveA: Initial reserve of token A (BigInt)
-     * :param reserveB: Initial reserve of token B (BigInt)
-     * :param amountA_in: Amount of token A to trade (BigInt)
-     * :return: Amount of token B to be provided (BigInt)
+     * Calculate exact output amount using Uniswap V2's actual formula
+     * amountOut = (amountIn * 997 * reserveOut) / (reserveIn * 1000 + amountIn * 997)
      */
-
-    // Ensure inputs are BigInt
-    reserveA = BigInt(reserveA);
-    reserveB = BigInt(reserveB);
-    amountA_in = BigInt(amountA_in);
-
-    // Constant product formula: (reserveA + amountA_in) * new_reserveB = reserveA * reserveB
-    // Rearranged to solve for new_reserveB:
-    const new_reserveB = (reserveA * reserveB) / (reserveA + amountA_in);
-
-    // The amount of token B that will be provided is the difference between initial and new reserveB
-    const amountB_out = reserveB - new_reserveB;
-
-    return amountB_out;
+    reserveIn = BigInt(reserveIn);
+    reserveOut = BigInt(reserveOut);
+    amountIn = BigInt(amountIn);
+    
+    const numerator = amountIn * 997n * reserveOut;
+    const denominator = (reserveIn * 1000n) + (amountIn * 997n);
+    const amountOut = numerator / denominator;
+    
+    // // Let's also show all intermediate values for verification
+    // console.log({
+    //     numerator: numerator.toString(),
+    //     denominator: denominator.toString(),
+    //     amountOut: amountOut.toString()
+    // });
+    
+    return amountOut;
 }
+
 
 function wait(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
