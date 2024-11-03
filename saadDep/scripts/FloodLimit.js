@@ -20,8 +20,6 @@ function setup() {
     UniV2FactoryA_ADDRESS = "0x120671CcDfEbC50Cfe7B7A62bd0593AA6E3F3cF0"; 
     UniV2FactoryB_ADDRESS = "0x1212eE52Bc401cCA1BF752D7E13F78a4eb3EbBB3"; 
     AtomicSwap_ADDRESS = "0x8Ed7F8Eca5535258AD520E32Ff6B8330A187641C"; 
-    UniV2Router_ADDRESS = "0xB74Bb6AE1A1804D283D17e95620dA9b9b0E6E0DA";
-
     pairABI = require('/home/ubuntu/ethereum-MEV/saadDep/artifacts/@uniswap/v2-core/contracts/UniswapV2Pair.sol/UniswapV2Pair.json').abi;
 
     // Set up provider and signers
@@ -47,7 +45,6 @@ function setup() {
     WETH_ABI = require('../artifacts/contracts/weth.sol/WETH9.json').abi;
     UniV2Factory_ABI = require('../artifacts/contracts/UniswapV2Factory.sol/UniswapV2Factory.json').abi;
     AtomicSwap_ABI = require('../artifacts/contracts/atomicSwap.sol/AtomicSwap.json').abi;
-    UniV2Router_ABI = require("../artifacts/contracts/UniswapV2Router01.sol/UniswapV2Router01.json").abi;
 
     // Create contract instances connected to appropriate signers
     DAI = new ethers.Contract(DAI_ADDRESS, DAI_ABI, deployerWallet);
@@ -55,7 +52,6 @@ function setup() {
     UniV2FactoryA = new ethers.Contract(UniV2FactoryA_ADDRESS, UniV2Factory_ABI, factoryAdminWallet);
     UniV2FactoryB = new ethers.Contract(UniV2FactoryB_ADDRESS, UniV2Factory_ABI, factoryAdminWallet);
     AtomicSwap = new ethers.Contract(AtomicSwap_ADDRESS, AtomicSwap_ABI, deployerWallet);
-    UniV2Router = new ethers.Contract(UniV2Router_ADDRESS, UniV2Router_ABI, deployerWallet);
 }
 
 function calculateExactOutputAmount(reserveIn, reserveOut, amountIn) {
@@ -70,11 +66,9 @@ function calculateExactOutputAmount(reserveIn, reserveOut, amountIn) {
     const numerator = amountIn * 997n * reserveOut;
     const denominator = (reserveIn * 1000n) + (amountIn * 997n);
     const amountOut = numerator / denominator;
-    
+        
     return amountOut;
 }
-
-
 
 
 // Global scope
@@ -85,16 +79,10 @@ let WETH;
 async function main() {
     // Setup the providers and signers
     await setup();
-    await approveToken(DAI, UniV2Router_ADDRESS, ethers.MaxUint256, deployerWallet, "DAI");
-    await approveToken(WETH, UniV2Router_ADDRESS, ethers.MaxUint256, deployerWallet, "WETH");
-    
-
     pairAddressA = await UniV2FactoryA.getPair(DAI_ADDRESS, WETH_ADDRESS);
     pairContractA = new ethers.Contract(pairAddressA, pairABI, deployerWallet);
-    console.log(pairAddressA);
 
-
-    const numTransactions = 1n;
+    const numTransactions = 15n;
     let total = [0n, 0n];
 
     // Transaction parameters 
@@ -106,25 +94,25 @@ async function main() {
     balanceWETHstart = await WETH.balanceOf(recipient);
     let recieptList = []
     let expected = 0n;
+    let perfectExpected = 0n;
 
-    // // Make sure the transactions are sent at the very start of the block
-    // let prevBlockNumber = await provider.getBlockNumber();
-    // let blockChangedAt = Date.now();
-    // console.log(`Starting block number: ${prevBlockNumber}`);
-    // let currentBlockNumber = await provider.getBlockNumber();
-    // while (currentBlockNumber == prevBlockNumber) {
-    //     await wait(300);
-    //     // Once the block number changes we are good to go
-    //     currentBlockNumber =  await provider.getBlockNumber();
-    // }
-    // console.log(`Block number changed from ${prevBlockNumber} to ${currentBlockNumber}`);
-    // prevBlockNumber = currentBlockNumber;
-    // blockChangedAt = Date.now();
+    // Make sure the transactions are sent at the very start of the block
+    let prevBlockNumber = await provider.getBlockNumber();
+    let blockChangedAt = Date.now();
+    console.log(`Starting block number: ${prevBlockNumber}`);
+    let currentBlockNumber = await provider.getBlockNumber();
+    while (currentBlockNumber == prevBlockNumber) {
+        await wait(300);
+        // Once the block number changes we are good to go
+        currentBlockNumber =  await provider.getBlockNumber();
+    }
+    console.log(`Block number changed from ${prevBlockNumber} to ${currentBlockNumber}`);
+    prevBlockNumber = currentBlockNumber;
+    blockChangedAt = Date.now();
     
 
     console.log("If you see this, transactions should start getting printed");
-    await approveToken(DAI, UniV2Router_ADDRESS, ethers.MaxUint256, recipientWallet, "DAI");
-    await approveToken(WETH, UniV2Router_ADDRESS, ethers.MaxUint256, recipientWallet, "WETH");
+
 
     // Call these here because state won't update fast enough to use these inside the loop
     nonce = await provider.getTransactionCount(recipientWallet.address, "pending")
@@ -135,16 +123,17 @@ async function main() {
     pair0 = pair[0];
     pair1 = pair[1];
 
+    initialPair = pair = await pairContractA.getReserves();
+
     for (let i = 0; i < numTransactions; i++) {
 
-        amt = 10000n;
-        let outputAmount;
+        amt = 90000n;
         // For me to distinguish the transactions
-        // amt = amt + BigInt(getRandomInt(1,100));
+        amt = amt + BigInt(getRandomInt(1,100));
 
         // Token swapping order
-        swapPath = [DAI_ADDRESS, WETH_ADDRESS];
-        // swapPath = [WETH_ADDRESS, DAI_ADDRESS];
+        // swapPath = [DAI_ADDRESS, WETH_ADDRESS];
+        swapPath = [WETH_ADDRESS, DAI_ADDRESS];
 
         // Calculate expected return
         // Want to take into account transactions made by user so as to not overestimate revenue
@@ -154,15 +143,19 @@ async function main() {
             // Check what token0 is 
             if (token0 == DAI_ADDRESS) {
                 // There's more DAI in the pool
-                const outputAmount = calculateExactOutputAmount(pair0, pair1, amt);
+                outputAmount = calculateExactOutputAmount(pair0, pair1, amt);
+                noSlippage = calculateExactOutputAmount(initialPair[0], initialPair[1], amt);
                 expected += outputAmount;
+                perfectExpected += noSlippage;
                 // Update reserves with the exact amounts swapped
                 pair0 += amt;            // Add input DAI to reserve
                 pair1 -= outputAmount;   // Subtract output WETH from reserve
             } else {
                 // There's more WETH, so DAI is pair1 (token1)
-                const outputAmount = calculateExactOutputAmount(pair1, pair0, amt);
+                outputAmount = calculateExactOutputAmount(pair1, pair0, amt);
+                noSlippage = calculateExactOutputAmount(initialPair[1], initialPair[0], amt);
                 expected += outputAmount;
+                perfectExpected += noSlippage;
                 // Update reserves with the exact amounts swapped
                 pair1 += amt;            // Add input DAI to reserve
                 pair0 -= outputAmount;   // Subtract output WETH from reserve
@@ -172,43 +165,39 @@ async function main() {
             // Check what token0 is 
             if (token0 == WETH_ADDRESS) {
                 // There's more WETH in the pool
-                const outputAmount = calculateExactOutputAmount(pair0, pair1, amt);
+                outputAmount = calculateExactOutputAmount(pair0, pair1, amt);
+                noSlippage = calculateExactOutputAmount(initialPair[0], initialPair[1], amt);
                 expected += outputAmount;
+                perfectExpected += noSlippage;
                 // Update reserves with the exact amounts swapped
                 pair0 += amt;            // Add input WETH to reserve
                 pair1 -= outputAmount;   // Subtract output DAI from reserve
             } else {
                 // There's more DAI, so WETH is token1
-                const outputAmount = calculateExactOutputAmount(pair1, pair0, amt);
+                outputAmount = calculateExactOutputAmount(pair1, pair0, amt);
+                noSlippage = calculateExactOutputAmount(initialPair[1], initialPair[0], amt);
                 expected += outputAmount;
+                perfectExpected += noSlippage;
                 // Update reserves with the exact amounts swapped
                 pair1 += amt;            // Add input WETH to reserve
                 pair0 -= outputAmount;   // Subtract output DAI from reserve
             }
         }
-
-        const routerFactoryAddress = await UniV2Router.factory();
-        const routerWETHAddress = await UniV2Router.WETH();
-        console.log(`Router Factory Address: ${routerFactoryAddress}`);
-        console.log(`Router WETH Address: ${routerWETHAddress}`, calculateExactOutputAmount(pair0, pair1, amt), calculateExactOutputAmount(pair1, pair0, amt));
         
-        const deadline = Math.floor(Date.now() / 1000) + 60 * 20;
-        const swapTx = await UniV2Router.swapExactTokensForTokens(
-            10000n,
-            calculateExactOutputAmount(pair1, pair0, amt),
+        const fromThis = false; // Using sender's balance       
+        // Execute the swap
+        let swapTx = await AtomicSwap.swap(
             swapPath,
+            amt,
+            noSlippage*(999n/10000n),
+            UniV2FactoryA,
             recipient,
-            deadline, {
-                nonce: nonce + i,
-                gasLimit: 1000000
+            fromThis, {
+                nonce: nonce + i
             }
         );
-        console.log(`Swap transaction sent with amount ${amt}, nonce ${nonce + i}, hash: ${swapTx.hash}`);
-     
-        
-
-
-
+        console.log(`Swap transaction sent with amount ${amt}, nonce ${nonce + i}, hash: ${swapTx.hash}, delta slippage = ${noSlippage-outputAmount}, allowed = ${noSlippage - noSlippage*(9975n/10000n)}`);
+        console.log("Output Amount", outputAmount, "noSlippage", noSlippage);
         // Will wait for the reciepts later after execution
         recieptList.push(swapTx)
         // Keep track of total. Since I am only using it at the end don't care about the sizes of the reserves
@@ -235,7 +224,7 @@ async function main() {
     deltaWETH = await WETH.balanceOf(recipient) - balanceWETHstart;
     // How much was spent and exchanged
     console.log(`Amount exchanged (from the user) DAI:${total[0]}, WETH:${total[1]}`)
-    console.log(`After ${numTransactions} transactions, change in balance is DAI:${deltaDAI}, WETH:${deltaWETH}\nExpected change was ${expected}`)
+    console.log(`After ${numTransactions} transactions, change in balance is DAI:${deltaDAI}, WETH:${deltaWETH}\nExpected change was ${expected}; if reserves hadn't changed (even with the user transactions), the change would be ${perfectExpected}`)
 
 }
 
@@ -249,25 +238,6 @@ function getRandomInt(min, max) {
 function wait(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
-
-// Approve token order through router
-async function approveToken(tokenContract, spenderAddress, amount, signer, tokenLabel) {
-    try {
-        const allowance = await tokenContract.allowance(signer.address, spenderAddress);
-        if (allowance >= amount/2n) {
-            // console.log(`${tokenLabel} already approved for spender ${spenderAddress}, skipping approval.`);
-            return;
-        }
-        console.log(`Approving ${tokenLabel} for spending by ${spenderAddress}...`);
-        const tx = await tokenContract.approve(spenderAddress, amount);
-        console.log(`Transaction submitted: ${tx.hash}`);
-        const receipt = await tx.wait();
-        console.log(`${tokenLabel} approved with transaction hash: ${receipt.hash}`);
-    } catch (error) {
-        console.error(`Error approving ${tokenLabel}:`, error);
-    }
-}
-
 
 
 main()

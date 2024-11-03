@@ -1,4 +1,5 @@
 const {ethers} = require('hardhat');
+const { type } = require('os');
 const path = require("path");
 const hardhatConfig = require(path.resolve(__dirname, "../hardhat.config.js"));
 const fs = require('fs').promises;
@@ -59,55 +60,24 @@ function calculateExactOutputAmount(reserveIn, reserveOut, amountIn) {
      * Calculate exact output amount using Uniswap V2's actual formula
      * amountOut = (amountIn * 997 * reserveOut) / (reserveIn * 1000 + amountIn * 997)
      */
-    reserveIn = BigInt(reserveIn);
-    reserveOut = BigInt(reserveOut);
-    amountIn = BigInt(amountIn);
+    reserveIn = BigInt(ethers.parseUnits(reserveIn.toString(), 18));
+    reserveOut = BigInt(ethers.parseUnits(reserveOut.toString(), 18));
+    amountIn = BigInt(ethers.parseUnits(amountIn.toString(), 18));
     
     const numerator = amountIn * 997n * reserveOut;
     const denominator = (reserveIn * 1000n) + (amountIn * 997n);
     const amountOut = numerator / denominator;
-    
-    // // Let's also show all intermediate values for verification
-    // console.log({
-    //     numerator: numerator.toString(),
-    //     denominator: denominator.toString(),
-    //     amountOut: amountOut.toString()
-    // });
-    
+
     return amountOut;
 }
-
-// function calculateOutputAmount(reserveIn, reserveOut, amountIn) {
-//     /**
-//      * Calculate how many reserveOut tokens will be provided when swapping amountIn of reserveIn tokens in a constant product AMM.
-//      *
-//      * :param reserveIn: Initial reserve of the input token (BigInt)
-//      * :param reserveOut: Initial reserve of the output token (BigInt)
-//      * :param amountIn: Amount of input token to trade (BigInt)
-//      * :return: Amount of output token to be provided (BigInt)
-//      */
-    
-//     reserveIn = BigInt(reserveIn);
-//     reserveOut = BigInt(reserveOut);
-//     amountIn = BigInt(amountIn);
-    
-//     // Update the input reserve with the incoming amount
-//     const newReserveIn = reserveIn + amountIn;
-    
-//     // Calculate the new output reserve using the constant product formula
-//     const newReserveOut = (reserveIn * reserveOut) / newReserveIn;
-    
-//     // The output amount is the difference between the old and new output reserves
-//     const amountOut = reserveOut - newReserveOut;
-    
-//     return amountOut;
-// }
 
 
 // Global scope
 let AtomicSwap;
 let recipientWallet;
 let WETH;
+let noSlippage;
+
 
 async function main() {
     // Setup the providers and signers
@@ -119,16 +89,130 @@ async function main() {
     let total = [0n, 0n];
 
     // Transaction parameters 
+    lines = await readEtherscan("/home/ubuntu/ethereum-MEV/etherscan.csv");
+    // Read the file and combine pairs
+    pairTransactions = [];
+    for (let i = 1; i < lines.length; i += 2) {
+        const line1 = lines[i];
+        const line2 = lines[i + 1];  // || ''; // Use an empty string if there's no pair for the last line
+        pairTransactions.push([line1, line2]); // Push an array of two lines
+    }
 
+    // Use the pairs to create a list of transactions to be sent
+    listTransactions = [];
+    for (const line of pairTransactions) {
+        // Split lines and strip quotes
+        inputLine = line[0].split(",").map(item => item.replace(/"/g, ''));
+        outputLine = line[1].split(",").map(item => item.replace(/"/g, ''));
+        if (inputLine[10] == "WETH") { //First transaction sends WETH to contract, hence WETH->DAI
+            swapPath = [WETH_ADDRESS, DAI_ADDRESS];
+        } else {
+            swapPath = [DAI_ADDRESS, WETH_ADDRESS];
+        }
+        amount = inputLine[6];
+        blockNumber = inputLine[1];
+        // listTransactions will hold a list of the transaction parameters 
+        listTransactions.push([swapPath, amount, blockNumber]);
+    }
+
+    // Combine any transactions that happen in a single block as it's meant to be
+    const blockTransactionsMap = {};
+    for (const transaction of listTransactions) {
+        const [swapPath, amount, blockNumber] = transaction;
+        // Initialize the array for this block number if it doesn't exist
+        if (!blockTransactionsMap[blockNumber]) {
+            blockTransactionsMap[blockNumber] = [];
+        }
+
+        // Add the transaction to the appropriate block
+        blockTransactionsMap[blockNumber].push(transaction);
+    }
+    // Convert the map to a list of transactions by block
+    const blockTransactions = Object.values(blockTransactionsMap);
+    console.log(blockTransactions);
 
     // Start the calculations
     recipient = "0xD8F3183DEF51A987222D845be228e0Bbb932C222";
     balanceDAIstart = await DAI.balanceOf(recipient);
     balanceWETHstart = await WETH.balanceOf(recipient);
-    let recieptList = []
-    let expected = 0n;
+    
 
-    // Make sure the transactions are sent at the very start of the block
+    
+
+    // console.log("If you see this, transactions should start getting printed");
+
+
+    // Call these here because state won't update fast enough to use these inside the loop
+    pair = await pairContractA.getReserves();
+    console.log(pair);
+    token0 = await pairContractA.token0();
+    token1 = await pairContractA.token1();
+    pair0 = BigInt(ethers.parseUnits(pair[0].toString(), 18));
+    pair1 = BigInt(ethers.parseUnits(pair[1].toString(), 18));
+
+    initialPair = await pairContractA.getReserves();
+    // Nonce for the current block
+    nonce = await provider.getTransactionCount(recipientWallet.address, "pending")
+    count = 0;
+    let recieptList;
+    for (let i = 0; i < blockTransactions.length; i++) {
+
+        expected = 0n;
+        perfectExpected = 0n;
+        recieptList = []
+
+        for (tx of blockTransactions[i]) {
+            swapPath = tx[0];
+            amt = tx[1].toString();
+            amtInWei = BigInt(ethers.parseUnits(amt, 18));
+            calculateExpected(swapPath, amtInWei);
+            // Update nonce to handle blocked transactions instead of single block
+            const fromThis = false; // Using sender's balance       
+            // Execute the swap
+            let swapTx = await AtomicSwap.swap(
+                swapPath,
+                amtInWei,
+                0n,
+                UniV2FactoryA,
+                recipient,
+                fromThis, {
+                    nonce: nonce + count++
+                }
+            );
+            console.log(`Swap transaction sent with amount ${amtInWei}, nonce ${nonce + count}, hash: ${swapTx.hash}}`);//, delta slippage = ${noSlippage-outputAmount}, allowed = ${noSlippage - noSlippage*(9999n/10000n)}`);
+            // console.log("Output Amount", outputAmount, "noSlippage", noSlippage);
+            // Will wait for the reciepts later after execution
+            recieptList.push(swapTx)
+            // Keep track of total. Since I am only using it at the end don't care about the sizes of the reserves
+            if (swapPath[0] == DAI_ADDRESS) {
+                // total[0] is DAI
+                total[0] += amtInWei;
+            } else {
+                // total[1] is WETH
+                total[1] += amtInWei;
+            }
+        }
+        
+        
+    }
+    // Wait for confirmations for calculation purposes
+    for (let i = 0; i < recieptList.length; i++) {  
+        let swapReceipt = await recieptList[i].wait();
+        console.log(`Swap ${swapReceipt.hash} completed in block ${await swapReceipt.blockNumber}`);
+    
+
+    
+    deltaDAI = await DAI.balanceOf(recipient) - balanceDAIstart;
+    deltaWETH = await WETH.balanceOf(recipient) - balanceWETHstart;
+    // How much was spent and exchanged
+    console.log(`Amount exchanged (from the user) DAI:${total[0]}, WETH:${total[1]}`)
+    console.log(`After ${numTransactions} transactions, change in balance is DAI:${deltaDAI}, WETH:${deltaWETH}\nExpected change was ${expected}; if reserves hadn't changed (even with the user transactions), the change would be ${perfectExpected}`)        
+    }
+
+}
+
+async function waitForNextBlock() {
+    // Wait for the next block
     let prevBlockNumber = await provider.getBlockNumber();
     let blockChangedAt = Date.now();
     console.log(`Starting block number: ${prevBlockNumber}`);
@@ -141,113 +225,7 @@ async function main() {
     console.log(`Block number changed from ${prevBlockNumber} to ${currentBlockNumber}`);
     prevBlockNumber = currentBlockNumber;
     blockChangedAt = Date.now();
-    
-
-    console.log("If you see this, transactions should start getting printed");
-
-
-    // Call these here because state won't update fast enough to use these inside the loop
-    nonce = await provider.getTransactionCount(recipientWallet.address, "pending")
-    pair = await pairContractA.getReserves();
-    console.log(pair);
-    token0 = await pairContractA.token0();
-    token1 = await pairContractA.token1();
-    pair0 = pair[0];
-    pair1 = pair[1];
-
-    for (let i = 0; i < numTransactions; i++) {
-
-        amt = 90000n;
-        // For me to distinguish the transactions
-        amt = amt + BigInt(getRandomInt(1,100));
-
-        // Token swapping order
-        swapPath = [DAI_ADDRESS, WETH_ADDRESS];
-        // swapPath = [WETH_ADDRESS, DAI_ADDRESS];
-
-        // Calculate expected return
-        // Want to take into account transactions made by user so as to not overestimate revenue
-        // Transaction being sent from the user, adjust reserves for future use
-        if (swapPath[0] == DAI_ADDRESS) {
-            // DAI --> WETH
-            // Check what token0 is 
-            if (token0 == DAI_ADDRESS) {
-                // There's more DAI in the pool
-                const outputAmount = calculateExactOutputAmount(pair0, pair1, amt);
-                expected += outputAmount;
-                // Update reserves with the exact amounts swapped
-                pair0 += amt;            // Add input DAI to reserve
-                pair1 -= outputAmount;   // Subtract output WETH from reserve
-            } else {
-                // There's more WETH, so DAI is pair1 (token1)
-                const outputAmount = calculateExactOutputAmount(pair1, pair0, amt);
-                expected += outputAmount;
-                // Update reserves with the exact amounts swapped
-                pair1 += amt;            // Add input DAI to reserve
-                pair0 -= outputAmount;   // Subtract output WETH from reserve
-            }
-        } else {
-            // WETH --> DAI
-            // Check what token0 is 
-            if (token0 == WETH_ADDRESS) {
-                // There's more WETH in the pool
-                const outputAmount = calculateExactOutputAmount(pair0, pair1, amt);
-                expected += outputAmount;
-                // Update reserves with the exact amounts swapped
-                pair0 += amt;            // Add input WETH to reserve
-                pair1 -= outputAmount;   // Subtract output DAI from reserve
-            } else {
-                // There's more DAI, so WETH is token1
-                const outputAmount = calculateExactOutputAmount(pair1, pair0, amt);
-                expected += outputAmount;
-                // Update reserves with the exact amounts swapped
-                pair1 += amt;            // Add input WETH to reserve
-                pair0 -= outputAmount;   // Subtract output DAI from reserve
-            }
-        }
-        
-        const fromThis = false; // Using sender's balance       
-        // Execute the swap
-        let swapTx = await AtomicSwap.swap(
-            swapPath,
-            amt,
-            UniV2FactoryA,
-            recipient,
-            fromThis, {
-                nonce: nonce + i
-            }
-        );
-        console.log(`Swap transaction sent with amount ${amt}, nonce ${nonce + i}, hash: ${swapTx.hash}`);
-        // Will wait for the reciepts later after execution
-        recieptList.push(swapTx)
-        // Keep track of total. Since I am only using it at the end don't care about the sizes of the reserves
-        if (swapPath[0] == DAI_ADDRESS) {
-            // total[0] is DAI
-            total[0] += amt;
-        } else {
-            // total[1] is WETH
-            total[1] += amt;
-        }
-    }
-
-    // Wait for confirmations for calculation purposes
-    for (let i = 0; i < recieptList.length; i++) {
-        let swapReceipt = await recieptList[i].wait();
-        console.log(`Swap ${swapReceipt.hash} completed in block ${await swapReceipt.blockNumber}`);
-    }
-
-    // Accounted for the fees during calculation, make sure to account for small errors
-    // if (numTransactions > 1n) {
-    //     expected = expected - Number(numTransactions);
-    // }
-    deltaDAI = await DAI.balanceOf(recipient) - balanceDAIstart;
-    deltaWETH = await WETH.balanceOf(recipient) - balanceWETHstart;
-    // How much was spent and exchanged
-    console.log(`Amount exchanged (from the user) DAI:${total[0]}, WETH:${total[1]}`)
-    console.log(`After ${numTransactions} transactions, change in balance is DAI:${deltaDAI}, WETH:${deltaWETH}\nExpected change was ${expected}`)
-
 }
-
 
 function getRandomInt(min, max) {
     min = Math.ceil(min);
@@ -257,6 +235,79 @@ function getRandomInt(min, max) {
 
 function wait(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Function to read and log the contents of arbitrage.txt
+async function readEtherscan(filePath) {
+    try {
+        const data = await fs.readFile(filePath, 'utf8');
+
+        // Split the data into lines
+        lines = data.split(/\r?\n/);
+        
+         // Remove commas within numbers (for large numbers in fields)
+        lines = lines.map(line => line.replace(/"(\d+),(\d+\.\d+)"/g, '"$1$2"'));
+
+         return lines;
+        // Return the list of lines
+        return nonEmptyLines;
+
+    } catch (error) {
+        console.error(`Error reading ${filePath}:`, error);
+        return []
+    }   
+}
+
+async function calculateExpected(swapPath, amtInWei) {
+    // Calculate expected return
+    // Want to take into account transactions made by user so as to not overestimate revenue
+    // Transaction being sent from the user, adjust reserves for future use
+    if (swapPath[0] == DAI_ADDRESS) {
+        // DAI --> WETH
+        // Check what token0 is 
+        if (token0 == DAI_ADDRESS) {
+            // There's more DAI in the pool
+            outputAmount = calculateExactOutputAmount(pair0, pair1, amtInWei);
+            noSlippage = calculateExactOutputAmount(initialPair[0], initialPair[1], amtInWei);
+            expected += outputAmount;
+            perfectExpected += noSlippage;
+            // Update reserves with the exact amounts swapped
+            pair0 += amtInWei;            // Add input DAI to reserve
+            pair1 -= outputAmount;   // Subtract output WETH from reserve
+
+        } else {
+            // There's more WETH, so DAI is pair1 (token1)
+            outputAmount = calculateExactOutputAmount(pair1, pair0, amtInWei);
+            noSlippage = calculateExactOutputAmount(initialPair[1], initialPair[0], amtInWei);
+            expected += outputAmount;
+            perfectExpected += noSlippage;
+            // Update reserves with the exact amounts swapped
+            pair1 += amtInWei;            // Add input DAI to reserve
+            pair0 -= outputAmount;   // Subtract output WETH from reserve
+        }
+    } else {
+        // WETH --> DAI
+        // Check what token0 is 
+        if (token0 == WETH_ADDRESS) {
+            // There's more WETH in the pool
+            outputAmount = calculateExactOutputAmount(pair0, pair1, amtInWei);
+            noSlippage = calculateExactOutputAmount(initialPair[0], initialPair[1], amtInWei);
+            expected += outputAmount;
+            perfectExpected += noSlippage;
+            // Update reserves with the exact amounts swapped
+            pair0 += amtInWei;            // Add input WETH to reserve
+            pair1 -= outputAmount;   // Subtract output DAI from reserve
+        } else {
+            // There's more DAI, so WETH is token1
+            outputAmount = calculateExactOutputAmount(pair1, pair0, amtInWei);
+            noSlippage = calculateExactOutputAmount(initialPair[1], initialPair[0], amtInWei);
+            expected += outputAmount;
+            perfectExpected += noSlippage;
+            // Update reserves with the exact amounts swapped
+            pair1 += amtInWei;            // Add input WETH to reserve
+            pair0 -= outputAmount;   // Subtract output DAI from reserve
+        }
+    }   
 }
 
 

@@ -1,0 +1,2 @@
+"Transaction Hash","Blockno","UnixTimestamp","DateTime (UTC)","From","To","TokenValue","USDValueDayOfTx","ContractAddress","TokenName","TokenSymbol"
+"0x86f053df87341fc00128630b42a2082f0c95c22065cf87839fe63f274fa7a68a","21091213","1730445023","2024-11-01 07:10:23","0xa478c2975ab1ea89e8196811f51a7b7ade33eb11","0x51c72848c68a965f66fa7a88855f9f7784502a7f","5,132.060615638104670208","N/A","0x6b175474e89094c44da98b954eedeac495271d0f","Dai Stablecoin","DAI"
