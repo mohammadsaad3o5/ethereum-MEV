@@ -60,9 +60,10 @@ function calculateExactOutputAmount(reserveIn, reserveOut, amountIn) {
      * Calculate exact output amount using Uniswap V2's actual formula
      * amountOut = (amountIn * 997 * reserveOut) / (reserveIn * 1000 + amountIn * 997)
      */
-    reserveIn = BigInt(ethers.parseUnits(reserveIn.toString(), 18));
-    reserveOut = BigInt(ethers.parseUnits(reserveOut.toString(), 18));
-    amountIn = BigInt(ethers.parseUnits(amountIn.toString(), 18));
+    // Ensure all inputs are BigInt
+    reserveIn = BigInt(reserveIn);
+    reserveOut = BigInt(reserveOut);
+    amountIn = BigInt(amountIn);
     
     const numerator = amountIn * 997n * reserveOut;
     const denominator = (reserveIn * 1000n) + (amountIn * 997n);
@@ -136,7 +137,7 @@ async function main() {
     balanceDAIstart = await DAI.balanceOf(recipient);
     balanceWETHstart = await WETH.balanceOf(recipient);
     
-
+    console.log("WETH AT START", balanceWETHstart);
     
 
     // console.log("If you see this, transactions should start getting printed");
@@ -147,17 +148,17 @@ async function main() {
     console.log(pair);
     token0 = await pairContractA.token0();
     token1 = await pairContractA.token1();
-    pair0 = BigInt(ethers.parseUnits(pair[0].toString(), 18));
-    pair1 = BigInt(ethers.parseUnits(pair[1].toString(), 18));
+    pair0 = BigInt(pair[0]);
+    pair1 = BigInt(pair[1]);
 
     initialPair = await pairContractA.getReserves();
     // Nonce for the current block
     nonce = await provider.getTransactionCount(recipientWallet.address, "pending")
     count = 0;
     let recieptList;
+    expected = 0n;
     for (let i = 0; i < blockTransactions.length; i++) {
 
-        expected = 0n;
         perfectExpected = 0n;
         recieptList = []
 
@@ -206,8 +207,12 @@ async function main() {
     deltaWETH = await WETH.balanceOf(recipient) - balanceWETHstart;
     // How much was spent and exchanged
     console.log(`Amount exchanged (from the user) DAI:${total[0]}, WETH:${total[1]}`)
-    console.log(`After ${numTransactions} transactions, change in balance is DAI:${deltaDAI}, WETH:${deltaWETH}\nExpected change was ${expected}; if reserves hadn't changed (even with the user transactions), the change would be ${perfectExpected}`)        
+    console.log(`After ${count} transactions, change in balance is DAI:${deltaDAI}, WETH:${deltaWETH}\nExpected change was ${expected}; if reserves hadn't changed (even with the user transactions), the change would be ${perfectExpected}`)        
     }
+    await waitForNextBlock();
+    console.log("WETH AT END", balanceWETHstart);
+    await waitForNextBlock();
+    console.log("WETH AT END", balanceWETHstart);
 
 }
 
