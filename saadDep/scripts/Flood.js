@@ -141,14 +141,18 @@ async function main() {
         }   
     }
     // Wait for confirmations for calculation purposes
-    deltaDAI = await DAI.balanceOf(recipient) - balanceDAIstart;
-    deltaWETH = await WETH.balanceOf(recipient) - balanceWETHstart;
+    
     for (let i = 0; i < recieptList.length; i++) {  
+        deltaDAI = await DAI.balanceOf(recipient) - balanceDAIstart;
+        deltaWETH = await WETH.balanceOf(recipient) - balanceWETHstart;
         let swapReceipt = await recieptList[i].wait();
         console.log(`Swap ${swapReceipt.hash} completed in block ${await swapReceipt.blockNumber}`);
         // How much was spent and exchanged
-        console.log(`Amount exchanged (from the user) ${red}DAI:${total[0]}, WETH:${total[1]}${reset}`)
-        console.log(`After ${count} transactions, change in balance is DAI:${deltaDAI}, WETH:${deltaWETH}\nExpected change was ${expectedDAI} DAI, ${expectedWETH} WETH; if reserves hadn't changed (even with the user transactions), the change would be ${red} ${perfectExpectedDAI} DAI and ${perfectExpectedWETH} WETH ${reset}`)        
+        console.log(`Amount exchanged (from the user) ${red} DAI:${total[0]}, WETH:${total[1]} ${reset}`)
+        console.log(`After ${count} transactions, change in balance is DAI:${deltaDAI}, WETH:${deltaWETH}\nExpected change was ${expectedDAI} DAI, ${expectedWETH} WETH; if reserves hadn't changed (even with the user transactions), the change would be ${red} ${perfectExpectedDAI} DAI and ${perfectExpectedWETH} WETH ${reset}`)      
+        lossDAI = expectedDAI - deltaDAI;  
+        lossWETH = expectedWETH - deltaWETH;
+        console.log(`Amount loss due to sandwich attack: ${yellow} ${lossDAI} DAI, ${lossWETH} ${reset}`)  
     }
 }
 
