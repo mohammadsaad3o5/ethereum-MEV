@@ -17,6 +17,7 @@ async function main() {
     // console.log(hardhatConfig.networks['local']['url']);
     const provider = new ethers.JsonRpcProvider(hardhatConfig.networks['local']['url']);
     const deployerPrivateKey = "0xeaba42282ad33c8ef2524f07277c03a776d98ae19f581990ce75becb7cfa1c23";
+    const recipientWETHPrivateKey = "0x3fd98b5187bf6526734efaa644ffbb4e3670d66f5d0268ce0323ec09124bff61"
     const factoryAdminPrivateKey = "0xdaf15504c22a352648a71ef2926334fe040ac1d5005019e09f6c979808024dc7";
     const sandwichBotPrivateKey = "0x5d2344259f42259f82d2c140aa66102ba89b57b4883ee441a8b312622bd42491";
 
@@ -27,6 +28,7 @@ async function main() {
     const deployerWallet = new ethers.Wallet(deployerPrivateKey, provider);
     const factoryAdminWallet = new ethers.Wallet(factoryAdminPrivateKey, provider);
     const sandwichBotWallet = new ethers.Wallet(sandwichBotPrivateKey, provider);
+    const recipientWETHWallet = new ethers.Wallet(recipientWETHPrivateKey, provider);
 
     console.log("Deployer address:", deployerWallet.address);
     console.log("Factory Admin address:", factoryAdminWallet.address);
@@ -49,7 +51,6 @@ async function main() {
 
     // Define the amount to mint (1000 tokens with 18 decimals)
     const mintAmount = ethers.parseUnits("10000000", 18); // 10 million with 18 decimals
-    
 
     // Create pairs in both factories
     await createPair(UniV2FactoryA, DAI_ADDRESS, WETH_ADDRESS, factoryAdminWallet, "A");
@@ -57,10 +58,14 @@ async function main() {
 
     // 2. Mint DAI tokens to deployer's address and sandwichBot
     await mintDAI(DAI, deployerWallet.address, (5n)*mintAmount);
+    await mintDAI(DAI, AtomicSwap_ADDRESS, (5n)*mintAmount);
+    await mintDAI(DAI, recipientWETHWallet.address, (5n)*mintAmount);
     // await mintDAI(DAI, sandwichBotWallet.address, (5n)*mintAmount);
 
     // 3. Mint WETH by sending ETH to WETH9 contract and sandwichBot
     await mintWETH(WETH, mintAmount*(5n), deployerWallet);
+    // await mintWETH(WETH, mintAmount*(5n), AtomicSwap_ADDRESS);
+    await mintWETH(WETH, mintAmount*(5n), recipientWETHWallet);
     // await mintWETH(WETH, mintAmount*(5n), sandwichBotWallet);
 
     const maxApprovalAmount = ethers.MaxUint256;

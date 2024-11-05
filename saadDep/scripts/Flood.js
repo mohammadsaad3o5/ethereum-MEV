@@ -16,7 +16,8 @@ const blue = "\x1b[34m";
 
 // Global scope
 let AtomicSwap;
-let recipientWallet;
+let recipientWalletDAI;
+let recipientWalletWETH;
 let WETH;
 let noSlippage;
 
@@ -73,13 +74,15 @@ async function main() {
     console.log(blockTransactions);
 
     // Start the calculations
-    recipient = "0xD8F3183DEF51A987222D845be228e0Bbb932C222";
-    balanceDAIstart = await DAI.balanceOf(recipient);
-    balanceWETHstart = await WETH.balanceOf(recipient);
+    recipientDAI = recipientWalletDAI.address;
+    recipientWETH = recipientWalletWETH.address;
+    balanceDAIstart = await DAI.balanceOf(recipientWETH);
+    balanceWETHstart = await WETH.balanceOf(recipientDAI);
+    console.log(`DAI balance of recipientWETH: ${await DAI.balanceOf(recipientWETH)}, WETH balance of recipientWETH ${await WETH.balanceOf(recipientWETH)}`);
+    console.log(`DAI balance of recipientDAI: ${await DAI.balanceOf(recipientDAI)}, WETH balance of recipientDAI ${await WETH.balanceOf(recipientDAI)}`);
 
     // Call these here because state won't update fast enough to use these inside the loop
     pair = await pairContractA.getReserves();
-    console.log(pair);
     token0 = await pairContractA.token0();
     token1 = await pairContractA.token1();
     pair0 = BigInt(pair[0]);
@@ -87,9 +90,14 @@ async function main() {
 
     initialPair = await pairContractA.getReserves();
     // Nonce for the current block
-    nonce = await provider.getTransactionCount(recipientWallet.address, "pending")
+    nonce = await provider.getTransactionCount(deployerWallet.address, "pending")
+    nonceDAI = await provider.getTransactionCount(recipientWalletDAI.address, "pending")
+    nonceWETH = await provider.getTransactionCount(recipientWalletWETH.address, "pending")
+    countDAI = 0;
+    countWETH = 0;
     count = 0;
     let recieptList;
+    let fromThis;
     expectedDAI = 0n;
     expectedWETH = 0n;
     perfectExpectedWETH = 0n;
@@ -106,7 +114,26 @@ async function main() {
             amtInWei = BigInt(ethers.parseUnits(amt, 18));
             calculateExpected(swapPath, amtInWei);
             // Update nonce to handle blocked transactions instead of single block
-            const fromThis = false; // Using sender's balance       
+
+            // When DAI --> WETH, recipient account does not get charged DAI (gets free WETH)
+            
+            // Keep track of total. Since I am only using it at the end don't care about the sizes of the reserves
+            if (swapPath[0] == DAI_ADDRESS) {   // DAI --> WETH
+                Spath = "DAI-->WETH";
+                // total[0] is DAI
+                total[0] += amtInWei;
+                recipient = recipientWETH;
+                fromThis = true; // Using contract's balance
+                // nonce = nonceWETH + countWETH++
+            } else {                            // WETH --> DAI
+                // total[1] is WETH
+                Spath = "WETH-->DAI";
+                total[1] += amtInWei;
+                recipient = recipientDAI;
+                // nonce = nonceDAI + countDAI++
+                fromThis = false; // Using sender's balance
+            }
+
             // Execute the swap
             let swapTx = await AtomicSwap.swap(
                 swapPath,
@@ -114,22 +141,16 @@ async function main() {
                 0n,
                 UniV2FactoryA,
                 recipient,
-                fromThis, {
+                false, // If DAI --> WETH, then recipient gets free WETH no DAI removed from account
+                {
                     nonce: nonce + count++
                 }
             );
-            console.log(`Swap transaction sent with amount ${amtInWei}, nonce ${nonce + count}, hash: ${swapTx.hash}}`);//, delta slippage = ${noSlippage-outputAmount}, allowed = ${noSlippage - noSlippage*(9999n/10000n)}`);
+            console.log(`${Spath} swap transaction sent with amount ${amtInWei}, nonce ${nonce + count}, hash: ${swapTx.hash}`);//, delta slippage = ${noSlippage-outputAmount}, allowed = ${noSlippage - noSlippage*(9999n/10000n)}`);
 
             // Will wait for the reciepts later after execution
             recieptList.push(swapTx)
-            // Keep track of total. Since I am only using it at the end don't care about the sizes of the reserves
-            if (swapPath[0] == DAI_ADDRESS) {
-                // total[0] is DAI
-                total[0] += amtInWei;
-            } else {
-                // total[1] is WETH
-                total[1] += amtInWei;
-            }
+            
         }
         
         // Wait for next block to avoid state issues
@@ -143,17 +164,23 @@ async function main() {
     // Wait for confirmations for calculation purposes
     
     for (let i = 0; i < recieptList.length; i++) {  
-        deltaDAI = await DAI.balanceOf(recipient) - balanceDAIstart;
-        deltaWETH = await WETH.balanceOf(recipient) - balanceWETHstart;
+        
         let swapReceipt = await recieptList[i].wait();
         console.log(`Swap ${swapReceipt.hash} completed in block ${await swapReceipt.blockNumber}`);
-        // How much was spent and exchanged
-        console.log(`Amount exchanged (from the user) ${red} DAI:${total[0]}, WETH:${total[1]} ${reset}`)
-        console.log(`After ${count} transactions, change in balance is DAI:${deltaDAI}, WETH:${deltaWETH}\nExpected change was ${expectedDAI} DAI, ${expectedWETH} WETH; if reserves hadn't changed (even with the user transactions), the change would be ${red} ${perfectExpectedDAI} DAI and ${perfectExpectedWETH} WETH ${reset}`)      
-        lossDAI = expectedDAI - deltaDAI;  
-        lossWETH = expectedWETH - deltaWETH;
-        console.log(`Amount loss due to sandwich attack: ${yellow} ${lossDAI} DAI, ${lossWETH} ${reset}`)  
+        
     }
+    // To find the change in DAI and WETH balances, calculate it from the recipients of the opposites
+    await waitForNextBlock();
+    await waitForNextBlock();
+    DAIExchanged = await DAI.balanceOf(recipientWETH) - balanceDAIstart;
+    WETHExchanged = await WETH.balanceOf(recipientDAI) - balanceWETHstart;
+    console.log(`DAI balance of recipientWETH: ${await DAI.balanceOf(recipientWETH)}, WETH balance of recipientWETH ${await WETH.balanceOf(recipientWETH)}`);
+    console.log(`DAI balance of recipientDAI: ${await DAI.balanceOf(recipientDAI)}, WETH balance of recipientDAI ${await WETH.balanceOf(recipientDAI)}`);
+    console.log(`Amount exchanged (from the user) (calculated) ${red} DAI:${total[0]}, WETH:${total[1]} ${reset}`);
+    console.log(`After ${countDAI} DAI and ${countWETH} WETH transactions, DAI exchanged is:${DAIExchanged}, and WETH is:${WETHExchanged}\nExpected change was ${expectedDAI} DAI, ${expectedWETH} WETH; if reserves hadn't changed (even with the user transactions), the change would be ${red} ${perfectExpectedDAI} DAI and ${perfectExpectedWETH} WETH ${reset}`);
+    lossDAI = expectedDAI - DAIExchanged;  
+    lossWETH = expectedWETH - WETHExchanged;
+    console.log(`Amount loss due to sandwich attack: ${yellow} ${lossDAI} DAI, ${lossWETH} WETH${reset}`);
 }
 
 function setup() {
@@ -170,14 +197,16 @@ function setup() {
     provider = new ethers.JsonRpcProvider(hardhatConfig.networks['local']['url']);
     factoryAdminPrivateKey = "0xdaf15504c22a352648a71ef2926334fe040ac1d5005019e09f6c979808024dc7";
     deployerPrivateKey = "0xeaba42282ad33c8ef2524f07277c03a776d98ae19f581990ce75becb7cfa1c23";
-    recipientPrivateKey = "0xeaba42282ad33c8ef2524f07277c03a776d98ae19f581990ce75becb7cfa1c23";
+    recipientPrivateKeyDAI = "0x3fd98b5187bf6526734efaa644ffbb4e3670d66f5d0268ce0323ec09124bff61"
+    recipientPrivateKeyWETH = "0xeaba42282ad33c8ef2524f07277c03a776d98ae19f581990ce75becb7cfa1c23";
 
-    if (!deployerPrivateKey || !recipientPrivateKey) {
+    if (!deployerPrivateKey || !recipientPrivateKeyWETH || !recipientPrivateKeyDAI) {
         throw new Error("Please set DEPLOYER_PRIVATE_KEY and FACTORY_ADMIN_PRIVATE_KEY in your .env file");
     }
 
     deployerWallet = new ethers.Wallet(deployerPrivateKey, provider);
-    recipientWallet = new ethers.Wallet(recipientPrivateKey, provider);
+    recipientWalletDAI = new ethers.Wallet(recipientPrivateKeyDAI, provider);
+    recipientWalletWETH = new ethers.Wallet(recipientPrivateKeyWETH, provider);
     factoryAdminWallet = new ethers.Wallet(factoryAdminPrivateKey, provider);
 
     // Load contract ABIs 
