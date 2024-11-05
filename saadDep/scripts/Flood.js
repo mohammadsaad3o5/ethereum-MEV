@@ -4,6 +4,33 @@ const path = require("path");
 const hardhatConfig = require(path.resolve(__dirname, "../hardhat.config.js"));
 const fs = require('fs').promises;
 
+// Approve token order through router
+async function approveToken(tokenContract, spenderAddress, amount, signer, tokenLabel) {
+    try {
+        // Connect the contract to the signer
+        const tokenWithSigner = tokenContract.connect(signer);
+
+        // Check allowance using the connected contract
+        const allowance = await tokenWithSigner.allowance(signer.address, spenderAddress);
+        console.log(`Current allowance: ${allowance.toString()}`);
+
+        if (allowance >= amount) {
+            console.log(`${tokenLabel} already approved for spender ${spenderAddress}, skipping approval.`);
+            return;
+        }
+
+        // Call approve using the connected contract
+        const tx = await tokenWithSigner.approve(spenderAddress, amount);
+        console.log(`Transaction submitted: ${tx.hash}`);
+
+        const receipt = await tx.wait();
+        console.log(`${tokenLabel} approved with transaction hash: ${receipt.transactionHash}`);
+    } catch (error) {
+        console.error(`Error approving ${tokenLabel}:`, error);
+    }
+}
+
+
 // Reset
 const reset = "\x1b[0m";
 
@@ -76,6 +103,10 @@ async function main() {
     // Start the calculations
     recipientDAI = recipientWalletDAI.address;
     recipientWETH = recipientWalletWETH.address;
+    await approveToken(DAI, AtomicSwap_ADDRESS, ethers.MaxUint256, recipientWalletDAI);
+    await approveToken(WETH, AtomicSwap_ADDRESS, ethers.MaxUint256, recipientWalletDAI);
+    console.log(await DAI.allowance(recipientWalletDAI.address, AtomicSwap_ADDRESS), await WETH.allowance(recipientWalletDAI.address, AtomicSwap_ADDRESS));
+    console.log(await DAI.allowance(recipientWalletWETH.address, AtomicSwap_ADDRESS), await WETH.allowance(recipientWalletWETH.address, AtomicSwap_ADDRESS));
     balanceDAIstart = await DAI.balanceOf(recipientWETH);
     balanceWETHstart = await WETH.balanceOf(recipientDAI);
     console.log(`DAI balance of recipientWETH: ${await DAI.balanceOf(recipientWETH)}, WETH balance of recipientWETH ${await WETH.balanceOf(recipientWETH)}`);
@@ -140,7 +171,7 @@ async function main() {
                 amtInWei,
                 0n,
                 UniV2FactoryA,
-                recipient,
+                recipientWETH,
                 false, // If DAI --> WETH, then recipient gets free WETH no DAI removed from account
                 {
                     nonce: nonce + count++

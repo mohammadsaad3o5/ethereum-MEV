@@ -192,12 +192,12 @@ async function approveToken(tokenContract, spenderAddress, amount, signer, token
 // Add liquidity to the DAI/WETH pair
 async function addLiquidity(pairAddress, tokenAContract, tokenBContract, amountA, amountB, signer) {
     try {
-        console.log(`\n--- Adding Liquidity ---`);
-        console.log(`Pair Address: ${pairAddress}`);
-        console.log(`Token A: ${tokenAContract}`);
-        console.log(`Token B: ${tokenBContract}`);
-        console.log(`Amount A (DAI): ${amountA}`);
-        console.log(`Amount B (WETH): ${amountB}`);
+        // console.log(`\n--- Adding Liquidity ---`);
+        // console.log(`Pair Address: ${pairAddress}`);
+        // console.log(`Token A: ${tokenAContract}`);
+        // console.log(`Token B: ${tokenBContract}`);
+        // console.log(`Amount A (DAI): ${amountA}`);
+        // console.log(`Amount B (WETH): ${amountB}`);
 
         const balanceA = await tokenAContract.balanceOf(signer.address);
         const balanceB = await tokenBContract.balanceOf(signer.address);
