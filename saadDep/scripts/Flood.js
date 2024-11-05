@@ -4,32 +4,6 @@ const path = require("path");
 const hardhatConfig = require(path.resolve(__dirname, "../hardhat.config.js"));
 const fs = require('fs').promises;
 
-// Approve token order through router
-async function approveToken(tokenContract, spenderAddress, amount, signer, tokenLabel) {
-    try {
-        // Connect the contract to the signer
-        const tokenWithSigner = tokenContract.connect(signer);
-
-        // Check allowance using the connected contract
-        const allowance = await tokenWithSigner.allowance(signer.address, spenderAddress);
-        console.log(`Current allowance: ${allowance.toString()}`);
-
-        if (allowance >= amount) {
-            console.log(`${tokenLabel} already approved for spender ${spenderAddress}, skipping approval.`);
-            return;
-        }
-
-        // Call approve using the connected contract
-        const tx = await tokenWithSigner.approve(spenderAddress, amount);
-        console.log(`Transaction submitted: ${tx.hash}`);
-
-        const receipt = await tx.wait();
-        console.log(`${tokenLabel} approved with transaction hash: ${receipt.transactionHash}`);
-    } catch (error) {
-        console.error(`Error approving ${tokenLabel}:`, error);
-    }
-}
-
 
 // Reset
 const reset = "\x1b[0m";
@@ -105,12 +79,17 @@ async function main() {
     recipientWETH = recipientWalletWETH.address;
     await approveToken(DAI, AtomicSwap_ADDRESS, ethers.MaxUint256, recipientWalletDAI);
     await approveToken(WETH, AtomicSwap_ADDRESS, ethers.MaxUint256, recipientWalletDAI);
-    console.log(await DAI.allowance(recipientWalletDAI.address, AtomicSwap_ADDRESS), await WETH.allowance(recipientWalletDAI.address, AtomicSwap_ADDRESS));
-    console.log(await DAI.allowance(recipientWalletWETH.address, AtomicSwap_ADDRESS), await WETH.allowance(recipientWalletWETH.address, AtomicSwap_ADDRESS));
-    balanceDAIstart = await DAI.balanceOf(recipientWETH);
-    balanceWETHstart = await WETH.balanceOf(recipientDAI);
-    console.log(`DAI balance of recipientWETH: ${await DAI.balanceOf(recipientWETH)}, WETH balance of recipientWETH ${await WETH.balanceOf(recipientWETH)}`);
-    console.log(`DAI balance of recipientDAI: ${await DAI.balanceOf(recipientDAI)}, WETH balance of recipientDAI ${await WETH.balanceOf(recipientDAI)}`);
+    
+    // Use these to figure out how much was imported 
+    recipientDAIinitalDAI = await DAI.balanceOf(recipientDAI);
+    recipientDAIinitalWETH = await WETH.balanceOf(recipientDAI);
+    recipientWETHinitalDAI = await DAI.balanceOf(recipientWETH);
+    recipientWETHinitalWETH = await WETH.balanceOf(recipientWETH);
+
+    // console.log(await DAI.allowance(recipientWalletDAI.address, AtomicSwap_ADDRESS), await WETH.allowance(recipientWalletDAI.address, AtomicSwap_ADDRESS));
+    // console.log(await DAI.allowance(recipientWalletWETH.address, AtomicSwap_ADDRESS), await WETH.allowance(recipientWalletWETH.address, AtomicSwap_ADDRESS));
+    // console.log(`DAI balance of recipientWETH: ${await DAI.balanceOf(recipientWETH)}, WETH balance of recipientWETH ${await WETH.balanceOf(recipientWETH)}`);
+    // console.log(`DAI balance of recipientDAI: ${await DAI.balanceOf(recipientDAI)}, WETH balance of recipientDAI ${await WETH.balanceOf(recipientDAI)}`);
 
     // Call these here because state won't update fast enough to use these inside the loop
     pair = await pairContractA.getReserves();
@@ -154,27 +133,32 @@ async function main() {
                 // total[0] is DAI
                 total[0] += amtInWei;
                 recipient = recipientWETH;
-                fromThis = true; // Using contract's balance
-                // nonce = nonceWETH + countWETH++
+                fromThis = false; // Using sender's balance
+                nonce = nonceWETH++ // + countWETH++
+                router = AtomicSwapWETH;
+                countWETH++;
             } else {                            // WETH --> DAI
                 // total[1] is WETH
                 Spath = "WETH-->DAI";
                 total[1] += amtInWei;
                 recipient = recipientDAI;
-                // nonce = nonceDAI + countDAI++
+                nonce = nonceDAI++ // + countDAI++
                 fromThis = false; // Using sender's balance
+                router = AtomicSwapDAI;
+                countDAI++;
             }
 
             // Execute the swap
-            let swapTx = await AtomicSwap.swap(
+            let swapTx = await router.swap(
                 swapPath,
                 amtInWei,
                 0n,
                 UniV2FactoryA,
-                recipientWETH,
-                false, // If DAI --> WETH, then recipient gets free WETH no DAI removed from account
+                recipient,
+                fromThis, 
                 {
-                    nonce: nonce + count++
+                    nonce: nonce,//nonce + count++,
+                    // gasPrice: 500000000n
                 }
             );
             console.log(`${Spath} swap transaction sent with amount ${amtInWei}, nonce ${nonce + count}, hash: ${swapTx.hash}`);//, delta slippage = ${noSlippage-outputAmount}, allowed = ${noSlippage - noSlippage*(9999n/10000n)}`);
@@ -185,7 +169,7 @@ async function main() {
         }
         
         // Wait for next block to avoid state issues
-        if (count % 50 == 0) {
+        if (nonceDAI+nonceWETH % 50 == 0) {
             // 50 transactions per block
             await waitForNextBlock();
             await waitForNextBlock();
@@ -202,16 +186,40 @@ async function main() {
     }
     // To find the change in DAI and WETH balances, calculate it from the recipients of the opposites
     await waitForNextBlock();
-    await waitForNextBlock();
-    DAIExchanged = await DAI.balanceOf(recipientWETH) - balanceDAIstart;
-    WETHExchanged = await WETH.balanceOf(recipientDAI) - balanceWETHstart;
-    console.log(`DAI balance of recipientWETH: ${await DAI.balanceOf(recipientWETH)}, WETH balance of recipientWETH ${await WETH.balanceOf(recipientWETH)}`);
-    console.log(`DAI balance of recipientDAI: ${await DAI.balanceOf(recipientDAI)}, WETH balance of recipientDAI ${await WETH.balanceOf(recipientDAI)}`);
-    console.log(`Amount exchanged (from the user) (calculated) ${red} DAI:${total[0]}, WETH:${total[1]} ${reset}`);
-    console.log(`After ${countDAI} DAI and ${countWETH} WETH transactions, DAI exchanged is:${DAIExchanged}, and WETH is:${WETHExchanged}\nExpected change was ${expectedDAI} DAI, ${expectedWETH} WETH; if reserves hadn't changed (even with the user transactions), the change would be ${red} ${perfectExpectedDAI} DAI and ${perfectExpectedWETH} WETH ${reset}`);
-    lossDAI = expectedDAI - DAIExchanged;  
-    lossWETH = expectedWETH - WETHExchanged;
-    console.log(`Amount loss due to sandwich attack: ${yellow} ${lossDAI} DAI, ${lossWETH} WETH${reset}`);
+    // console.log(`DAIExchanged = ${await DAI.balanceOf(recipientWETH)} - ${recipientWETHinitalDAI};`);
+    // console.log(`WETHExchanged = ${await WETH.balanceOf(recipientDAI)} - ${recipientDAIinitalWETH} = ${await WETH.balanceOf(recipientDAI) - recipientDAIinitalWETH};`);
+    DAIExchanged = await DAI.balanceOf(recipientWETH) - recipientWETHinitalDAI; // How much DAI-->WETH was done
+    if (DAIExchanged < 0n) {
+        DAIExchanged = DAIExchanged * -1n;
+    }
+    WETHExchanged = await WETH.balanceOf(recipientDAI) - recipientDAIinitalWETH; // How much WETH-->DAI was done
+    if (WETHExchanged < 0n) {
+        WETHExchanged = WETHExchanged * -1n;
+    }
+    // console.log(`WETHExtracted = ${await WETH.balanceOf(recipientWETH)} - ${recipientWETHinitalWETH};`);
+    // console.log(`DAIExtracted = ${await DAI.balanceOf(recipientDAI)} - ${recipientDAIinitalDAI};`);
+    WETHExtracted = await WETH.balanceOf(recipientWETH) - recipientWETHinitalWETH; // How much WETH was gotten
+    if (WETHExtracted < 0n) {
+        WETHExtracted = WETHExtracted * -1n;
+    }
+    DAIExtracted = await DAI.balanceOf(recipientDAI) - recipientDAIinitalDAI; // How much DAI was gotten
+    if (DAIExtracted < 0n) {
+        DAIExtracted = DAIExtracted * -1n;
+    }
+    // console.log(`DAI balance of recipientWETH: ${await DAI.balanceOf(recipientWETH)}, WETH balance of recipientWETH ${await WETH.balanceOf(recipientWETH)}`);
+    // console.log(`DAI balance of recipientDAI: ${await DAI.balanceOf(recipientDAI)}, WETH balance of recipientDAI ${await WETH.balanceOf(recipientDAI)}`);
+    // Sanity check
+    // console.log(`total[0] - DAIExchanged = ${total[0] - DAIExchanged}`);
+    // console.log(`total[1] - WETHExchanged = ${total[1] - WETHExchanged}`);
+    // console.log(`expectedDAI - DAIExtracted = ${expectedDAI - DAIExtracted}`);
+    // console.log(`expectedWETH - WETHExtracted = ${expectedWETH - WETHExtracted}`)
+
+    console.log(`Amount exchanged (from the user) (calculated) ${red} DAI: ${total[0]}, WETH: ${total[1]} ${reset}`);
+    console.log(`After ${countWETH} DAI and ${countDAI} WETH transactions, DAI exchanged is: ${DAIExchanged}, and WETH is: ${WETHExchanged}\nExpected change was ${red} ${expectedDAI} DAI, ${expectedWETH} WETH ${reset}; if reserves hadn't changed (even with the user transactions), the change would be ${yellow} ${perfectExpectedDAI} DAI and ${perfectExpectedWETH} WETH ${reset}`);
+    console.log(`Amount gotten from the swaps: ${DAIExtracted} DAI, ${WETHExtracted} WETH`);
+    lossDAI = expectedDAI - DAIExtracted;  
+    lossWETH = expectedWETH - WETHExtracted;
+    console.log(`Amount loss due to sandwich attack: ${blue} ${lossDAI} DAI, ${lossWETH} WETH${reset}`);
 }
 
 function setup() {
@@ -231,10 +239,6 @@ function setup() {
     recipientPrivateKeyDAI = "0x3fd98b5187bf6526734efaa644ffbb4e3670d66f5d0268ce0323ec09124bff61"
     recipientPrivateKeyWETH = "0xeaba42282ad33c8ef2524f07277c03a776d98ae19f581990ce75becb7cfa1c23";
 
-    if (!deployerPrivateKey || !recipientPrivateKeyWETH || !recipientPrivateKeyDAI) {
-        throw new Error("Please set DEPLOYER_PRIVATE_KEY and FACTORY_ADMIN_PRIVATE_KEY in your .env file");
-    }
-
     deployerWallet = new ethers.Wallet(deployerPrivateKey, provider);
     recipientWalletDAI = new ethers.Wallet(recipientPrivateKeyDAI, provider);
     recipientWalletWETH = new ethers.Wallet(recipientPrivateKeyWETH, provider);
@@ -251,7 +255,8 @@ function setup() {
     WETH = new ethers.Contract(WETH_ADDRESS, WETH_ABI, deployerWallet);
     UniV2FactoryA = new ethers.Contract(UniV2FactoryA_ADDRESS, UniV2Factory_ABI, factoryAdminWallet);
     UniV2FactoryB = new ethers.Contract(UniV2FactoryB_ADDRESS, UniV2Factory_ABI, factoryAdminWallet);
-    AtomicSwap = new ethers.Contract(AtomicSwap_ADDRESS, AtomicSwap_ABI, deployerWallet);
+    AtomicSwapWETH = new ethers.Contract(AtomicSwap_ADDRESS, AtomicSwap_ABI, recipientWalletWETH);
+    AtomicSwapDAI = new ethers.Contract(AtomicSwap_ADDRESS, AtomicSwap_ABI, recipientWalletDAI);
 }
 
 function calculateExactOutputAmount(reserveIn, reserveOut, amountIn) {
@@ -368,6 +373,30 @@ async function calculateExpected(swapPath, amtInWei) {
             pair0 -= outputAmount;   // Subtract output DAI from reserve
         }
     }   
+}
+
+// Approve token order through router
+async function approveToken(tokenContract, spenderAddress, amount, signer) {
+    try {
+        // Connect the contract to the signer
+        const tokenWithSigner = tokenContract.connect(signer);
+
+        // Check allowance using the connected contract
+        const allowance = await tokenWithSigner.allowance(signer.address, spenderAddress);
+        if (allowance >= amount) {
+            // console.log(`Token already approved for spender ${spenderAddress}, skipping approval.`);
+            return;
+        }
+
+        // Call approve using the connected contract
+        const tx = await tokenWithSigner.approve(spenderAddress, amount);
+        console.log(`Transaction submitted: ${tx.hash}`);
+
+        const receipt = await tx.wait();
+        console.log(`${tokenLabel} approved with transaction hash: ${receipt.transactionHash}`);
+    } catch (error) {
+        console.error(`Error approving ${tokenLabel}:`, error);
+    }
 }
 
 

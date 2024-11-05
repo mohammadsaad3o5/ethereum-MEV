@@ -12,7 +12,7 @@ from web3.middleware import construct_sign_and_send_raw_middleware
 from eth_utils import to_checksum_address
 import rlp
 
-rpc_url = "http://localhost:32813"
+rpc_url = "http://localhost:32923"
 
 '''
 0x1CD4aF4A9bF33474C802d31790A195335f7a9Ab8 - DAI (deployed first)
