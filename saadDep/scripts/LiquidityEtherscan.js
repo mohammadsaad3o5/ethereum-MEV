@@ -21,9 +21,6 @@ async function main() {
     const factoryAdminPrivateKey = "0xdaf15504c22a352648a71ef2926334fe040ac1d5005019e09f6c979808024dc7";
     const sandwichBotPrivateKey = "0x5d2344259f42259f82d2c140aa66102ba89b57b4883ee441a8b312622bd42491";
 
-    if (!deployerPrivateKey || !factoryAdminPrivateKey) {
-        throw new Error("Please set DEPLOYER_PRIVATE_KEY and FACTORY_ADMIN_PRIVATE_KEY in your .env file");
-    }
 
     const deployerWallet = new ethers.Wallet(deployerPrivateKey, provider);
     const factoryAdminWallet = new ethers.Wallet(factoryAdminPrivateKey, provider);
@@ -58,13 +55,13 @@ async function main() {
 
     // 2. Mint DAI tokens to deployer's address and sandwichBot
     await mintDAI(DAI, deployerWallet.address, (5n)*mintAmount);
-    await mintDAI(DAI, AtomicSwap_ADDRESS, (5n)*mintAmount);
+    await mintDAI(DAI, sandwichBotWallet.address, (5n)*mintAmount);
     await mintDAI(DAI, recipientWETHWallet.address, (5n)*mintAmount);
     // await mintDAI(DAI, sandwichBotWallet.address, (5n)*mintAmount);
 
     // 3. Mint WETH by sending ETH to WETH9 contract and sandwichBot
     await mintWETH(WETH, mintAmount*(5n), deployerWallet);
-    // await mintWETH(WETH, mintAmount*(5n), AtomicSwap_ADDRESS);
+    await mintWETH(WETH, mintAmount*(5n), sandwichBotWallet);
     await mintWETH(WETH, mintAmount*(5n), recipientWETHWallet);
     // await mintWETH(WETH, mintAmount*(5n), sandwichBotWallet);
 

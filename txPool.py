@@ -31,7 +31,7 @@ def monitor_txpool():
                         print(
                             f"New transaction detected: ",
                             f"Hash: {tx_hash}, From: {tx['from']}, To: {tx.get('to', 'Contract Creation')}, ",
-                            f"Value: {int(tx['value'], 16)} wei, gasPrice: {int(tx.get('gasPrice'), 16)-7}, nonce {int(tx['nonce'], 16)}"
+                            f"Value: {int(tx['value'], 16)} wei, gasPrice: {int(tx.get('gasPrice'), 16)}, nonce {int(tx['nonce'], 16)}"
                         )
                         function_call = decode_transaction_input(tx_hash)
                         print(function_call)
@@ -42,7 +42,8 @@ def monitor_txpool():
                                 with open("arbitrage.txt", 'a') as file:
                                     print("arbitrage opportunity!")
 
-                                    line = path.get(function_call[1]['path'][0]) + "," + path.get(function_call[1]['path'][1]) + "," + str(function_call[1]['amountIn']) + "," + str(int(tx.get('gasPrice', '0x0'), 16)-7) + "\n"
+                                    # line = path.get(function_call[1]['path'][0]) + "," + path.get(function_call[1]['path'][1]) + "," + str(function_call[1]['amountIn']) + "," + str(int(tx.get('gasPrice', '0x0'), 16)-7) + "\n"
+                                    line = path.get(function_call[1]['path'][0]) + "," + path.get(function_call[1]['path'][1]) + "," + str(function_call[1]['amountIn']) + "," + str(int(tx.get('gasPrice', '0x0'), 16)) + "\n"
                                     file.write(line)
 
 

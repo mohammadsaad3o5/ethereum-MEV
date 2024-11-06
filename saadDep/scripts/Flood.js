@@ -74,6 +74,8 @@ async function main() {
     const blockTransactions = Object.values(blockTransactionsMap);
     console.log(blockTransactions);
 
+    await waitForNextBlock();
+
     // Start the calculations
     recipientDAI = recipientWalletDAI.address;
     recipientWETH = recipientWalletWETH.address;
@@ -116,7 +118,7 @@ async function main() {
     for (let i = 0; i < blockTransactions.length; i++) {
         // Store promises
         recieptList = []
-
+        gasPrice = 1000007n;
         // Loop through blocks
         for (tx of blockTransactions[i]) {
             swapPath = tx[0];
@@ -158,18 +160,19 @@ async function main() {
                 fromThis, 
                 {
                     nonce: nonce,//nonce + count++,
-                    // gasPrice: 500000000n
+                    gasPrice: gasPrice
                 }
             );
-            console.log(`${Spath} swap transaction sent with amount ${amtInWei}, nonce ${nonce + count}, hash: ${swapTx.hash}`);//, delta slippage = ${noSlippage-outputAmount}, allowed = ${noSlippage - noSlippage*(9999n/10000n)}`);
-
+            console.log(`${Spath} swap transaction sent with amount ${amtInWei}, gasPrice ${gasPrice}, nonce ${nonce + count}, hash: ${swapTx.hash}`);//, delta slippage = ${noSlippage-outputAmount}, allowed = ${noSlippage - noSlippage*(9999n/10000n)}`);
+            // Differentiate the transactions using gasPrice
+            gasPrice -= 5n;
             // Will wait for the reciepts later after execution
             recieptList.push(swapTx)
             
         }
         
         // Wait for next block to avoid state issues
-        if (nonceDAI+nonceWETH % 50 == 0) {
+        if (nonceDAI+nonceWETH % 25 == 0) {
             // 50 transactions per block
             await waitForNextBlock();
             await waitForNextBlock();
@@ -395,7 +398,7 @@ async function approveToken(tokenContract, spenderAddress, amount, signer) {
         const receipt = await tx.wait();
         console.log(`${tokenLabel} approved with transaction hash: ${receipt.transactionHash}`);
     } catch (error) {
-        console.error(`Error approving ${tokenLabel}:`, error);
+        console.error(`Error approving "some" token:`, error);
     }
 }
 
