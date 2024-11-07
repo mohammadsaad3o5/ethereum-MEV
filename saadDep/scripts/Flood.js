@@ -1,9 +1,9 @@
-const {ethers} = require('hardhat');
+const { ethers } = require('hardhat');
 const { type } = require('os');
 const path = require("path");
 const hardhatConfig = require(path.resolve(__dirname, "../hardhat.config.js"));
 const fs = require('fs').promises;
-
+const fsS = require('fs');
 
 // Reset
 const reset = "\x1b[0m";
@@ -14,7 +14,6 @@ const green = "\x1b[32m";
 const yellow = "\x1b[33m";
 const blue = "\x1b[34m";
 
-
 // Global scope
 let AtomicSwap;
 let recipientWalletDAI;
@@ -22,17 +21,26 @@ let recipientWalletWETH;
 let WETH;
 let noSlippage;
 
+// Set up the data file path and write stream
+const dataFilePath = path.join(__dirname, 'simulation_results.txt');
+const dataStream = fsS.createWriteStream(dataFilePath, { flags: 'w' }); // 'w' flag to overwrite existing file
 
 async function main() {
+
     // Setup the providers and signers
     await setup();
+    // Write headers to the data file
+    dataStream.write('DAIAmount,WETHAmount,BlockNumber,AttackerProfitDAI,AttackerProfitWETH,Token0Reserve,Token1Reserve\n');
+
     pairAddressA = await UniV2FactoryA.getPair(DAI_ADDRESS, WETH_ADDRESS);
     pairContractA = new ethers.Contract(pairAddressA, pairABI, deployerWallet);
+
     // Store total (DAI is always going to be more - if it's not then there's bigger issues to worry about)
     let total = [0n, 0n];
 
     // Transaction parameters 
     lines = await readEtherscan("/home/ubuntu/ethereum-MEV/etherscan.csv");
+
     // Read the file and combine pairs
     pairTransactions = [];
     for (let i = 1; i < lines.length; i += 2) {
@@ -47,7 +55,7 @@ async function main() {
         // Split lines and strip quotes
         inputLine = line[0].split(",").map(item => item.replace(/"/g, ''));
         outputLine = line[1].split(",").map(item => item.replace(/"/g, ''));
-        if (inputLine[10] == "WETH") { //First transaction sends WETH to contract, hence WETH->DAI
+        if (inputLine[10] == "WETH") { // First transaction sends WETH to contract, hence WETH->DAI
             swapPath = [WETH_ADDRESS, DAI_ADDRESS];
         } else {
             swapPath = [DAI_ADDRESS, WETH_ADDRESS];
@@ -74,69 +82,74 @@ async function main() {
     const blockTransactions = Object.values(blockTransactionsMap);
     console.log(blockTransactions);
 
-    await waitForNextBlock();
+    // await waitForNextBlock();
 
     // Start the calculations
     recipientDAI = recipientWalletDAI.address;
     recipientWETH = recipientWalletWETH.address;
     await approveToken(DAI, AtomicSwap_ADDRESS, ethers.MaxUint256, recipientWalletDAI);
     await approveToken(WETH, AtomicSwap_ADDRESS, ethers.MaxUint256, recipientWalletDAI);
-    
-    // Use these to figure out how much was imported 
-    recipientDAIinitalDAI = await DAI.balanceOf(recipientDAI);
-    recipientDAIinitalWETH = await WETH.balanceOf(recipientDAI);
-    recipientWETHinitalDAI = await DAI.balanceOf(recipientWETH);
-    recipientWETHinitalWETH = await WETH.balanceOf(recipientWETH);
 
-    // console.log(await DAI.allowance(recipientWalletDAI.address, AtomicSwap_ADDRESS), await WETH.allowance(recipientWalletDAI.address, AtomicSwap_ADDRESS));
-    // console.log(await DAI.allowance(recipientWalletWETH.address, AtomicSwap_ADDRESS), await WETH.allowance(recipientWalletWETH.address, AtomicSwap_ADDRESS));
-    // console.log(`DAI balance of recipientWETH: ${await DAI.balanceOf(recipientWETH)}, WETH balance of recipientWETH ${await WETH.balanceOf(recipientWETH)}`);
-    // console.log(`DAI balance of recipientDAI: ${await DAI.balanceOf(recipientDAI)}, WETH balance of recipientDAI ${await WETH.balanceOf(recipientDAI)}`);
-
-    // Call these here because state won't update fast enough to use these inside the loop
-    pair = await pairContractA.getReserves();
-    token0 = await pairContractA.token0();
-    token1 = await pairContractA.token1();
-    pair0 = BigInt(pair[0]);
-    pair1 = BigInt(pair[1]);
-
-    initialPair = await pairContractA.getReserves();
     // Nonce for the current block
-    nonce = await provider.getTransactionCount(deployerWallet.address, "pending")
-    nonceDAI = await provider.getTransactionCount(recipientWalletDAI.address, "pending")
-    nonceWETH = await provider.getTransactionCount(recipientWalletWETH.address, "pending")
+    nonce = await provider.getTransactionCount(deployerWallet.address, "pending");
+    nonceDAI = await provider.getTransactionCount(recipientWalletDAI.address, "pending");
+    nonceWETH = await provider.getTransactionCount(recipientWalletWETH.address, "pending");
     countDAI = 0;
     countWETH = 0;
     count = 0;
-    let recieptList;
-    let fromThis;
-    expectedDAI = 0n;
-    expectedWETH = 0n;
-    perfectExpectedWETH = 0n;
-    perfectExpectedDAI = 0n;
-
     gasPrice = 1000007n;
+
+    // Initialize total expected amounts
+    let totalExpectedDAI = 0n;
+    let totalExpectedWETH = 0n;
+    let totalPerfectExpectedDAI = 0n;
+    let totalPerfectExpectedWETH = 0n;
+
     for (let i = 0; i < blockTransactions.length; i++) {
+        // Reset variables for the block
+        expectedDAI = 0n;
+        expectedWETH = 0n;
+        perfectExpectedDAI = 0n;
+        perfectExpectedWETH = 0n;
+
+        const baseFee = (await provider.getBlock('latest')).baseFeePerGas;
+        console.log(baseFee);
+
+        // Get current reserves and update pair variables
+        pair = await pairContractA.getReserves();
+        token0 = await pairContractA.token0();
+        token1 = await pairContractA.token1();
+        pair0 = BigInt(pair[0]);
+        pair1 = BigInt(pair[1]);
+        initialPair = [pair0, pair1];
+
+        // Get initial balances of recipients
+        recipientDAIinitalDAI = await DAI.balanceOf(recipientDAI);
+        recipientDAIinitalWETH = await WETH.balanceOf(recipientDAI);
+        recipientWETHinitalDAI = await DAI.balanceOf(recipientWETH);
+        recipientWETHinitalWETH = await WETH.balanceOf(recipientWETH);
+
         // Store promises
-        recieptList = []
-        // Loop through blocks
+        recieptList = [];
+        // Loop through transactions in the block
         for (tx of blockTransactions[i]) {
             swapPath = tx[0];
             amt = tx[1].toString();
             amtInWei = BigInt(ethers.parseUnits(amt, 18));
             calculateExpected(swapPath, amtInWei);
+
             // Update nonce to handle blocked transactions instead of single block
 
             // When DAI --> WETH, recipient account does not get charged DAI (gets free WETH)
-            
-            // Keep track of total. Since I am only using it at the end don't care about the sizes of the reserves
+
+            // Keep track of total. Since we are only using it at the end don't care about the sizes of the reserves
             if (swapPath[0] == DAI_ADDRESS) {   // DAI --> WETH
                 Spath = "DAI-->WETH";
                 // total[0] is DAI
                 total[0] += amtInWei;
                 recipient = recipientWETH;
                 fromThis = false; // Using sender's balance
-                nonce = nonceWETH++ // + countWETH++
+                nonce = nonceWETH++; // + countWETH++
                 router = AtomicSwapWETH;
                 countWETH++;
             } else {                            // WETH --> DAI
@@ -144,7 +157,7 @@ async function main() {
                 Spath = "WETH-->DAI";
                 total[1] += amtInWei;
                 recipient = recipientDAI;
-                nonce = nonceDAI++ // + countDAI++
+                nonce = nonceDAI++; // + countDAI++
                 fromThis = false; // Using sender's balance
                 router = AtomicSwapDAI;
                 countDAI++;
@@ -157,106 +170,110 @@ async function main() {
                 0n,
                 UniV2FactoryA,
                 recipient,
-                fromThis, 
+                fromThis,
                 {
                     nonce: nonce,//nonce + count++,
                     gasPrice: gasPrice
                 }
             );
-            console.log(`${Spath} swap transaction sent with amount ${amtInWei}, gasPrice ${gasPrice}, nonce ${nonce + count}, hash: ${swapTx.hash}`);//, delta slippage = ${noSlippage-outputAmount}, allowed = ${noSlippage - noSlippage*(9999n/10000n)}`);
-            if ((countWETH+countDAI) % 20 == 0) {
-                // 20 transactions per block
-                await waitForNextBlock();
-                await waitForNextBlock();
-                await waitForNextBlock();
-            }  
+            console.log(`${Spath} swap transaction sent with amount ${amtInWei}, gasPrice ${gasPrice}, nonce ${nonce + count}, hash: ${swapTx.hash}`);
+
             // Differentiate the transactions using gasPrice
             gasPrice -= 5n;
-            // Will wait for the reciepts later after execution
-            recieptList.push(swapTx)
-            // Wait for next block to avoid state issues
-            
+            // Will wait for the receipts later after execution
+            recieptList.push(swapTx);
+        }
+
+        // Wait for the block transactions
+        await waitForNextBlock();
+        
+        // Wait for transaction receipts
+        for (let j = 0; j < recieptList.length; j++) {
+            let swapReceipt = await recieptList[j].wait();
+            console.log(`Swap ${swapReceipt.hash} completed in block ${await swapReceipt.blockNumber}`);
         }
         
-         
-    }
-    // Wait for confirmations for calculation purposes
-    
-    for (let i = 0; i < recieptList.length; i++) {  
-        
-        let swapReceipt = await recieptList[i].wait();
-        console.log(`Swap ${swapReceipt.hash} completed in block ${await swapReceipt.blockNumber}`);
-        
-    }
-    // To find the change in DAI and WETH balances, calculate it from the recipients of the opposites
-    await waitForNextBlock();
-    // console.log(`DAIExchanged = ${await DAI.balanceOf(recipientWETH)} - ${recipientWETHinitalDAI};`);
-    // console.log(`WETHExchanged = ${await WETH.balanceOf(recipientDAI)} - ${recipientDAIinitalWETH} = ${await WETH.balanceOf(recipientDAI) - recipientDAIinitalWETH};`);
-    DAIExchanged = await DAI.balanceOf(recipientWETH) - recipientWETHinitalDAI; // How much DAI-->WETH was done
-    if (DAIExchanged < 0n) {
-        DAIExchanged = DAIExchanged * -1n;
-    }
-    WETHExchanged = await WETH.balanceOf(recipientDAI) - recipientDAIinitalWETH; // How much WETH-->DAI was done
-    if (WETHExchanged < 0n) {
-        WETHExchanged = WETHExchanged * -1n;
-    }
-    // console.log(`WETHExtracted = ${await WETH.balanceOf(recipientWETH)} - ${recipientWETHinitalWETH};`);
-    // console.log(`DAIExtracted = ${await DAI.balanceOf(recipientDAI)} - ${recipientDAIinitalDAI};`);
-    WETHExtracted = await WETH.balanceOf(recipientWETH) - recipientWETHinitalWETH; // How much WETH was gotten
-    if (WETHExtracted < 0n) {
-        WETHExtracted = WETHExtracted * -1n;
-    }
-    DAIExtracted = await DAI.balanceOf(recipientDAI) - recipientDAIinitalDAI; // How much DAI was gotten
-    if (DAIExtracted < 0n) {
-        DAIExtracted = DAIExtracted * -1n;
-    }
-    // console.log(`DAI balance of recipientWETH: ${await DAI.balanceOf(recipientWETH)}, WETH balance of recipientWETH ${await WETH.balanceOf(recipientWETH)}`);
-    // console.log(`DAI balance of recipientDAI: ${await DAI.balanceOf(recipientDAI)}, WETH balance of recipientDAI ${await WETH.balanceOf(recipientDAI)}`);
-    // Sanity check
-    // console.log(`total[0] - DAIExchanged = ${total[0] - DAIExchanged}`);
-    // console.log(`total[1] - WETHExchanged = ${total[1] - WETHExchanged}`);
-    // console.log(`expectedDAI - DAIExtracted = ${expectedDAI - DAIExtracted}`);
-    // console.log(`expectedWETH - WETHExtracted = ${expectedWETH - WETHExtracted}`)
+        await waitForNextBlock();
+        await waitForNextBlock();
+        // Calculate amounts exchanged and expected
+        // Recalculate the recipient balances
+        DAIExchanged = await DAI.balanceOf(recipientWETH) - recipientWETHinitalDAI;
+        if (DAIExchanged < 0n) DAIExchanged = DAIExchanged * -1n;
 
-    console.log(`Amount exchanged (from the user) (calculated) ${red} DAI: ${total[0]}, WETH: ${total[1]} ${reset}`);
-    console.log(`After ${countWETH} DAI and ${countDAI} WETH transactions, DAI exchanged is: ${DAIExchanged}, and WETH is: ${WETHExchanged}\nExpected change was ${red} ${expectedDAI} DAI, ${expectedWETH} WETH ${reset}; if reserves hadn't changed (even with the user transactions), the change would be ${yellow} ${perfectExpectedDAI} DAI and ${perfectExpectedWETH} WETH ${reset}`);
-    console.log(`Amount gotten from the swaps: ${DAIExtracted} DAI, ${WETHExtracted} WETH`);
+        WETHExchanged = await WETH.balanceOf(recipientDAI) - recipientDAIinitalWETH;
+        if (WETHExchanged < 0n) WETHExchanged = WETHExchanged * -1n;
 
-    let lossCalcDAI;
-    let lossCalcWETH;
-    if (BigInt(perfectExpectedDAI) > BigInt(expectedDAI)) {
-        lossCalcDAI = BigInt(perfectExpectedDAI);
-    } else {
-        lossCalcDAI = BigInt(expectedDAI);
+        WETHExtracted = await WETH.balanceOf(recipientWETH) - recipientWETHinitalWETH;
+        if (WETHExtracted < 0n) WETHExtracted = WETHExtracted * -1n;
+
+        DAIExtracted = await DAI.balanceOf(recipientDAI) - recipientDAIinitalDAI;
+        if (DAIExtracted < 0n) DAIExtracted = DAIExtracted * -1n;
+
+        // Update total expected amounts
+        totalExpectedDAI += expectedDAI;
+        totalExpectedWETH += expectedWETH;
+        totalPerfectExpectedDAI += perfectExpectedDAI;
+        totalPerfectExpectedWETH += perfectExpectedWETH;
+
+        console.log(`\n${yellow}Results after processing block ${i + 1}:${reset}`);
+        console.log(`${green}Amount exchanged (from the user): DAI: ${total[0]}, WETH: ${total[1]}${reset}`);
+        console.log(`DAI exchanged in this block: ${DAIExchanged}, WETH exchanged in this block: ${WETHExchanged}`);
+        console.log(`Expected change in this block: ${red}${expectedDAI} DAI, ${expectedWETH} WETH${reset}`);
+        console.log(`If reserves hadn't changed (perfect scenario): ${yellow}${perfectExpectedDAI} DAI, ${perfectExpectedWETH} WETH${reset}`);
+        console.log(`Amount gotten from swaps in this block: ${DAIExtracted} DAI, ${WETHExtracted} WETH`);
+
+        let lossCalcDAI;
+        let lossCalcWETH;
+        if (BigInt(perfectExpectedDAI) > BigInt(expectedDAI)) {
+            lossCalcDAI = BigInt(perfectExpectedDAI);
+        } else {
+            lossCalcDAI = BigInt(expectedDAI);
+        }
+        if (BigInt(perfectExpectedWETH) > BigInt(expectedWETH)) {
+            lossCalcWETH = BigInt(perfectExpectedWETH);
+        } else {
+            lossCalcWETH = BigInt(expectedWETH);
+        }
+
+        lossDAI = BigInt(lossCalcDAI) - BigInt(DAIExtracted);
+        lossWETH = BigInt(lossCalcWETH) - BigInt(WETHExtracted);
+        console.log(`Amount loss due to sandwich attack in this block: ${blue}${lossDAI} DAI, ${lossWETH} WETH${reset}\n`);
+
+        // Attacker profit is lossDAI and/or lossWETH
+        // Now, get the current block number
+        const currentBlockNumber = await provider.getBlockNumber();
+
+        // Get the reserves after the block
+        const reservesAfter = await pairContractA.getReserves();
+        const reserve0 = BigInt(reservesAfter[0]);
+        const reserve1 = BigInt(reservesAfter[1]);
+        // Collect the data
+        const dataLine = `${DAIExchanged.toString()},${WETHExchanged.toString()},${currentBlockNumber},${lossDAI.toString()},${lossWETH.toString()},${reserve0.toString()},${reserve1.toString()}\n`;
+        dataStream.write(dataLine);
+
     }
-    if (BigInt(perfectExpectedWETH) > BigInt(expectedWETH)) {
-        lossCalcWETH = BigInt(perfectExpectedWETH);
-    } else {
-        lossCalcWETH = BigInt(expectedWETH);
-    }
-    console.log(lossCalcDAI, lossCalcWETH);
-    // lossCalcDAI = Math.max(Number(perfectExpectedDAI), Number(expectedDAI));
-    // lossCalcWETH = Math.max(Number(perfectExpectedWETH), Number(expectedWETH));
-    lossDAI = BigInt(lossCalcDAI) - BigInt(DAIExtracted);  
-    lossWETH = BigInt(lossCalcWETH) - BigInt(WETHExtracted);
-    console.log(`Amount loss due to sandwich attack: ${blue} ${lossDAI} DAI, ${lossWETH} WETH${reset}`);
+
+    // Optionally, after all blocks are processed, print total results
+    console.log(`${yellow}Total results after processing all blocks:${reset}`);
+    console.log(`${green}Total amount exchanged (from the user): DAI: ${total[0]}, WETH: ${total[1]}${reset}`);
+    console.log(`Total expected change: ${red}${totalExpectedDAI} DAI, ${totalExpectedWETH} WETH${reset}`);
+    console.log(`Total perfect expected change: ${yellow}${totalPerfectExpectedDAI} DAI, ${totalPerfectExpectedWETH} WETH${reset}`);
 }
 
 function setup() {
-
     // Contract ABIs and addresses
-    DAI_ADDRESS = "0x4bF8D2E79E33cfd5a8348737CA91bE5F65Ea7dd9"; 
+    DAI_ADDRESS = "0x4bF8D2E79E33cfd5a8348737CA91bE5F65Ea7dd9";
     WETH_ADDRESS = "0x91BF7398aFc3d2691aA23799fdb9175EE2EB6105";
-    UniV2FactoryA_ADDRESS = "0x120671CcDfEbC50Cfe7B7A62bd0593AA6E3F3cF0"; 
-    UniV2FactoryB_ADDRESS = "0x1212eE52Bc401cCA1BF752D7E13F78a4eb3EbBB3"; 
-    AtomicSwap_ADDRESS = "0x8Ed7F8Eca5535258AD520E32Ff6B8330A187641C"; 
+    UniV2FactoryA_ADDRESS = "0x120671CcDfEbC50Cfe7B7A62bd0593AA6E3F3cF0";
+    UniV2FactoryB_ADDRESS = "0x1212eE52Bc401cCA1BF752D7E13F78a4eb3EbBB3";
+    AtomicSwap_ADDRESS = "0x8Ed7F8Eca5535258AD520E32Ff6B8330A187641C";
     pairABI = require('/home/ubuntu/ethereum-MEV/saadDep/artifacts/@uniswap/v2-core/contracts/UniswapV2Pair.sol/UniswapV2Pair.json').abi;
 
     // Set up provider and signers
     provider = new ethers.JsonRpcProvider(hardhatConfig.networks['local']['url']);
     factoryAdminPrivateKey = "0xdaf15504c22a352648a71ef2926334fe040ac1d5005019e09f6c979808024dc7";
     deployerPrivateKey = "0xeaba42282ad33c8ef2524f07277c03a776d98ae19f581990ce75becb7cfa1c23";
-    recipientPrivateKeyDAI = "0x3fd98b5187bf6526734efaa644ffbb4e3670d66f5d0268ce0323ec09124bff61"
+    recipientPrivateKeyDAI = "0x3fd98b5187bf6526734efaa644ffbb4e3670d66f5d0268ce0323ec09124bff61";
     recipientPrivateKeyWETH = "0xeaba42282ad33c8ef2524f07277c03a776d98ae19f581990ce75becb7cfa1c23";
 
     deployerWallet = new ethers.Wallet(deployerPrivateKey, provider);
@@ -288,7 +305,7 @@ function calculateExactOutputAmount(reserveIn, reserveOut, amountIn) {
     reserveIn = BigInt(reserveIn);
     reserveOut = BigInt(reserveOut);
     amountIn = BigInt(amountIn);
-    
+
     const numerator = amountIn * 997n * reserveOut;
     const denominator = (reserveIn * 1000n) + (amountIn * 997n);
     const amountOut = numerator / denominator;
@@ -305,7 +322,7 @@ async function waitForNextBlock() {
     while (currentBlockNumber == prevBlockNumber) {
         await wait(300);
         // Once the block number changes we are good to go
-        currentBlockNumber =  await provider.getBlockNumber();
+        currentBlockNumber = await provider.getBlockNumber();
     }
     console.log(`Block number changed from ${prevBlockNumber} to ${currentBlockNumber}`);
     prevBlockNumber = currentBlockNumber;
@@ -329,18 +346,15 @@ async function readEtherscan(filePath) {
 
         // Split the data into lines
         lines = data.split(/\r?\n/);
-        
-         // Remove commas within numbers (for large numbers in fields)
+
+        // Remove commas within numbers (for large numbers in fields)
         lines = lines.map(line => line.replace(/"(\d+),(\d+\.\d+)"/g, '"$1$2"'));
 
-         return lines;
-        // Return the list of lines
-        return nonEmptyLines;
-
+        return lines;
     } catch (error) {
         console.error(`Error reading ${filePath}:`, error);
-        return []
-    }   
+        return [];
+    }
 }
 
 async function calculateExpected(swapPath, amtInWei) {
@@ -392,7 +406,7 @@ async function calculateExpected(swapPath, amtInWei) {
             pair1 += amtInWei;            // Add input WETH to reserve
             pair0 -= outputAmount;   // Subtract output DAI from reserve
         }
-    }   
+    }
 }
 
 // Approve token order through router
@@ -419,13 +433,13 @@ async function approveToken(tokenContract, spenderAddress, amount, signer) {
     }
 }
 
-
 main()
-    .then(() => process.exit(0))
+    .then(() => {
+        dataStream.end(); // Close the write stream
+        process.exit(0);
+    })
     .catch(error => {
         console.error("Script execution failed:", error);
+        dataStream.end(); // Ensure the stream is closed even if there's an error
         process.exit(1);
     });
-
-
-
