@@ -115,10 +115,10 @@ async function main() {
     perfectExpectedWETH = 0n;
     perfectExpectedDAI = 0n;
 
+    gasPrice = 1000007n;
     for (let i = 0; i < blockTransactions.length; i++) {
         // Store promises
         recieptList = []
-        gasPrice = 1000007n;
         // Loop through blocks
         for (tx of blockTransactions[i]) {
             swapPath = tx[0];
@@ -164,20 +164,21 @@ async function main() {
                 }
             );
             console.log(`${Spath} swap transaction sent with amount ${amtInWei}, gasPrice ${gasPrice}, nonce ${nonce + count}, hash: ${swapTx.hash}`);//, delta slippage = ${noSlippage-outputAmount}, allowed = ${noSlippage - noSlippage*(9999n/10000n)}`);
+            if ((countWETH+countDAI) % 20 == 0) {
+                // 20 transactions per block
+                await waitForNextBlock();
+                await waitForNextBlock();
+                await waitForNextBlock();
+            }  
             // Differentiate the transactions using gasPrice
             gasPrice -= 5n;
             // Will wait for the reciepts later after execution
             recieptList.push(swapTx)
+            // Wait for next block to avoid state issues
             
         }
         
-        // Wait for next block to avoid state issues
-        if (nonceDAI+nonceWETH % 25 == 0) {
-            // 50 transactions per block
-            await waitForNextBlock();
-            await waitForNextBlock();
-            await waitForNextBlock();
-        }   
+         
     }
     // Wait for confirmations for calculation purposes
     
@@ -220,8 +221,24 @@ async function main() {
     console.log(`Amount exchanged (from the user) (calculated) ${red} DAI: ${total[0]}, WETH: ${total[1]} ${reset}`);
     console.log(`After ${countWETH} DAI and ${countDAI} WETH transactions, DAI exchanged is: ${DAIExchanged}, and WETH is: ${WETHExchanged}\nExpected change was ${red} ${expectedDAI} DAI, ${expectedWETH} WETH ${reset}; if reserves hadn't changed (even with the user transactions), the change would be ${yellow} ${perfectExpectedDAI} DAI and ${perfectExpectedWETH} WETH ${reset}`);
     console.log(`Amount gotten from the swaps: ${DAIExtracted} DAI, ${WETHExtracted} WETH`);
-    lossDAI = expectedDAI - DAIExtracted;  
-    lossWETH = expectedWETH - WETHExtracted;
+
+    let lossCalcDAI;
+    let lossCalcWETH;
+    if (BigInt(perfectExpectedDAI) > BigInt(expectedDAI)) {
+        lossCalcDAI = BigInt(perfectExpectedDAI);
+    } else {
+        lossCalcDAI = BigInt(expectedDAI);
+    }
+    if (BigInt(perfectExpectedWETH) > BigInt(expectedWETH)) {
+        lossCalcWETH = BigInt(perfectExpectedWETH);
+    } else {
+        lossCalcWETH = BigInt(expectedWETH);
+    }
+    console.log(lossCalcDAI, lossCalcWETH);
+    // lossCalcDAI = Math.max(Number(perfectExpectedDAI), Number(expectedDAI));
+    // lossCalcWETH = Math.max(Number(perfectExpectedWETH), Number(expectedWETH));
+    lossDAI = BigInt(lossCalcDAI) - BigInt(DAIExtracted);  
+    lossWETH = BigInt(lossCalcWETH) - BigInt(WETHExtracted);
     console.log(`Amount loss due to sandwich attack: ${blue} ${lossDAI} DAI, ${lossWETH} WETH${reset}`);
 }
 
@@ -283,7 +300,7 @@ async function waitForNextBlock() {
     // Wait for the next block
     let prevBlockNumber = await provider.getBlockNumber();
     let blockChangedAt = Date.now();
-    console.log(`Starting block number: ${prevBlockNumber}`);
+    // console.log(`Starting block number: ${prevBlockNumber}`);
     let currentBlockNumber = await provider.getBlockNumber();
     while (currentBlockNumber == prevBlockNumber) {
         await wait(300);
@@ -396,7 +413,7 @@ async function approveToken(tokenContract, spenderAddress, amount, signer) {
         console.log(`Transaction submitted: ${tx.hash}`);
 
         const receipt = await tx.wait();
-        console.log(`${tokenLabel} approved with transaction hash: ${receipt.transactionHash}`);
+        console.log(`"some token" approved with transaction hash: ${receipt.transactionHash}`);
     } catch (error) {
         console.error(`Error approving "some" token:`, error);
     }

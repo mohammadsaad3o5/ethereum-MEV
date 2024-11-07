@@ -1,9 +1,14 @@
 from utility import get_block
 # import get_block function from main utility file
 import re
+import sys
 
 end_reached = False
-block_number = 1
+if len(sys.argv) > 1:
+    block_number = int(sys.argv[1])
+else:
+    block_number = 1
+
 count = 0
 while not end_reached:
     # Increment block number till end is reached

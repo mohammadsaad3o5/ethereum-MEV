@@ -15,6 +15,40 @@ const pairABI = require('/home/ubuntu/ethereum-MEV/saadDep/artifacts/@uniswap/v2
 let AtomicSwap;
 let recipientWallet;
 
+function combineStrings(list) {
+    // Create an object to hold grouped values
+    const grouped = {};
+
+    // Group the values by the first two elements
+    list.forEach(item => {
+        const [token1, token2, amountStr, valueStr] = item.split(",");
+        const amount = BigInt(amountStr); // Parse as BigInt for precision
+        const value = parseInt(valueStr);
+
+        // Use a unique key for each token pair
+        const key = `${token1},${token2}`;
+
+        if (!grouped[key]) {
+            grouped[key] = {
+                token1,
+                token2,
+                totalAmount: amount,
+                minValue: value,
+                maxValue: value,
+            };
+        } else {
+            grouped[key].totalAmount += amount;
+            grouped[key].minValue = Math.min(grouped[key].minValue, value);
+            grouped[key].maxValue = Math.max(grouped[key].maxValue, value);
+        }
+    });
+
+    // Reformat the grouped values into the original string format
+    return Object.values(grouped).map(({ token1, token2, totalAmount, minValue, maxValue }) => {
+        return `${token1},${token2},${totalAmount.toString()},${minValue},${maxValue}`;
+    });
+}
+
 async function main() {
 
     setup();    
@@ -37,8 +71,8 @@ async function main() {
     await approveToken(WETH, AtomicSwap_ADDRESS, ethers.MaxUint256, deployerWallet, "WETH");
         
     while (true) {
-        // Make sure its the same (idk what this was referring to? probably removed it)
-
+        
+        // Transaction Batching
         read = false;
         while (!read) {
             // Read and log the arbitrage.txt file
@@ -70,13 +104,22 @@ async function main() {
             }
         }
 
+        combinedTransactions = combineStrings(lines);
+        // console.log(combinedTransactions);
+        // Combine transactions of the same type together
+        // for (const line of combinedTransactions) {
+        //     console.log(line);
+        // }
+        if (combinedTransactions.length != 0) {
+            console.log(combinedTransactions);
+        }
 
         balanceDAIstart = await DAI.balanceOf(recipient);
         balanceWETHstart = await WETH.balanceOf(recipient);
         total = 0n;
 
         expected = 0n;
-        for (const line of lines) {  
+        for (const line of combinedTransactions) {
             // Need this to ensure the transactions aren't being nonce limited
             numTransactions = lines.length;
             // console.log(numTransactions)
@@ -85,9 +128,11 @@ async function main() {
             tokenA = lineArr[0];
             tokenB = lineArr[1];
             amount = Number(lineArr[2]);
-            gasPrice = Number(lineArr[3]);
+            // Use combined transactions
+            gasPriceLow = Number(lineArr[3]) - 1;
+            gasPriceHigh = Number(lineArr[4]) + 1;
 
-            // Keep track of the total 
+            // Keep track of the total  
             balance = BigInt(amount);
             balance = balance + BigInt(getRandomInt(1,100));
             total += balance;
@@ -112,7 +157,7 @@ async function main() {
             
 
 
-            console.log(`INFO: Sending swap transaction with ${swapPath}, ${balance}, gasPrice ${gasPrice + 1}, nonce:${currentNonce + step}`)
+            console.log(`INFO: Sending swap transaction with ${swapPath}, ${balance}, gasPriceHigh ${gasPriceHigh}, nonce:${currentNonce + step}`)
             let swap1 = AtomicSwap.swap(
                 swapPath,
                 balance,
@@ -121,8 +166,8 @@ async function main() {
                 recipient,
                 false,
                 { 
-                    gasPrice: gasPrice + 1,
-                    nonce: currentNonce + step
+                    gasPrice: gasPriceHigh,
+                    nonce: currentNonce + step++
                 } 
             )
             // console.log(`Swap transaction sent. ${swap1.hash}`);
@@ -140,7 +185,7 @@ async function main() {
             // add up the change
             expected += balance;
 
-            console.log(`INFO: Sending swap transaction with ${reverse}, ${balance}, gasPrice ${gasPrice - 1}, nonce:${currentNonce + step + numTransactions}`)
+            console.log(`INFO: Sending swap transaction with ${reverse}, ${balance}, gasPriceLow ${gasPriceLow}, nonce:${currentNonce + step}`)
             let swap2 = AtomicSwap.swap(
                 reverse,
                 balance,
@@ -148,11 +193,10 @@ async function main() {
                 UniV2FactoryA,
                 recipient,
                 false, {
-                    gasPrice: gasPrice - 1,
-                    nonce: currentNonce + step + numTransactions
+                    gasPrice: gasPriceLow,
+                    nonce: currentNonce + step++
                 }
             )
-            step += 1;
 
         }
 
@@ -168,14 +212,14 @@ async function main() {
 
 }
 
-async function handleSwap(swap1, swap2) {
-    let result = await swap1;
-    let receipt = await result.wait();
-    console.log(receipt);
-    result = await swap2;
-    receipt = result.wait();
-    console.log(receipt);
-}
+// async function handleSwap(swap1, swap2) {
+//     let result = await swap1;
+//     let receipt = await result.wait();
+//     console.log(receipt);
+//     result = await swap2;
+//     receipt = result.wait();
+//     console.log(receipt);
+// }
 
 
 // Approve token order through router

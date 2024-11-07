@@ -1,8 +1,0 @@
-{
-  "LiquidDeployment#Dai": "0x4bF8D2E79E33cfd5a8348737CA91bE5F65Ea7dd9",
-  "LiquidDeployment#UniV2FactoryA": "0x120671CcDfEbC50Cfe7B7A62bd0593AA6E3F3cF0",
-  "LiquidDeployment#UniV2FactoryB": "0x1212eE52Bc401cCA1BF752D7E13F78a4eb3EbBB3",
-  "LiquidDeployment#WETH9": "0x91BF7398aFc3d2691aA23799fdb9175EE2EB6105",
-  "LiquidDeployment#AtomicSwap": "0x8Ed7F8Eca5535258AD520E32Ff6B8330A187641C",
-  "LiquidDeployment#UniV2Router": "0xB74Bb6AE1A1804D283D17e95620dA9b9b0E6E0DA"
-}
