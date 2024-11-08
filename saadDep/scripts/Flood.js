@@ -163,38 +163,61 @@ async function main() {
                 countDAI++;
             }
 
-            // Execute the swap
-            let swapTx = await router.swap(
-                swapPath,
-                amtInWei,
-                0n,
-                UniV2FactoryA,
-                recipient,
-                fromThis,
-                {
-                    nonce: nonce,//nonce + count++,
-                    gasPrice: gasPrice
-                }
-            );
-            console.log(`${Spath} swap transaction sent with amount ${amtInWei}, gasPrice ${gasPrice}, nonce ${nonce + count}, hash: ${swapTx.hash}`);
+            // Execute the swap inside a try/catch block
+            try {
+                let swapTx = await router.swap(
+                    swapPath,
+                    amtInWei,
+                    0n,
+                    UniV2FactoryA,
+                    recipient,
+                    fromThis,
+                    {
+                        nonce: nonce, // nonce + count++,
+                        gasPrice: gasPrice
+                    }
+                );
+                console.log(`${Spath} swap transaction sent with amount ${amtInWei}, gasPrice ${gasPrice}, nonce ${nonce + count}, hash: ${swapTx.hash}`);
+                // Differentiate the transactions using gasPrice
+                gasPrice -= 5n;
+                // Will wait for the receipts later after execution
+                recieptList.push(swapTx);
+            } catch (error) {
+                console.error(`Error sending swap transaction:`, error);
 
-            // Differentiate the transactions using gasPrice
-            gasPrice -= 5n;
-            // Will wait for the receipts later after execution
-            recieptList.push(swapTx);
+                // Log the error to the data file
+                const currentBlockNumber = await provider.getBlockNumber();
+                const dataLine = `${0},${0},${currentBlockNumber},0,0,${pair0.toString()},${pair1.toString()},Error,"Error in swap transaction: ${error.message}"\n`;
+                dataStream.write(dataLine);
+                // Continue to next transaction
+                continue;
+            }
         }
+        
 
         // Wait for the block transactions
-        await waitForNextBlock();
         
         // Wait for transaction receipts
         for (let j = 0; j < recieptList.length; j++) {
-            let swapReceipt = await recieptList[j].wait();
-            console.log(`Swap ${swapReceipt.hash} completed in block ${await swapReceipt.blockNumber}`);
+            try {
+                let swapReceipt = await recieptList[j].wait();
+                console.log(`Swap ${swapReceipt.hash} completed in block ${await swapReceipt.blockNumber}`);
+            } catch (error) {
+                console.error(`Error waiting for transaction receipt:`, error);
+
+                // Log the error to the data file
+                const currentBlockNumber = await provider.getBlockNumber();
+                const dataLine = `${0},${0},${currentBlockNumber},0,0,${pair0.toString()},${pair1.toString()},Error,"Error in transaction receipt: ${error.message}"\n`;
+                dataStream.write(dataLine);
+                // Continue to next receipt
+                continue;
+            }
         }
         await waitForNextBlock();
         await waitForNextBlock();
-        
+        await waitForNextBlock();
+
+
         // Calculate amounts exchanged and expected
         // Recalculate the recipient balances
         DAIExchanged = await DAI.balanceOf(recipientWETH) - recipientWETHinitalDAI;
