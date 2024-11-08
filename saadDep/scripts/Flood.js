@@ -192,9 +192,9 @@ async function main() {
             let swapReceipt = await recieptList[j].wait();
             console.log(`Swap ${swapReceipt.hash} completed in block ${await swapReceipt.blockNumber}`);
         }
+        await waitForNextBlock();
+        await waitForNextBlock();
         
-        await waitForNextBlock();
-        await waitForNextBlock();
         // Calculate amounts exchanged and expected
         // Recalculate the recipient balances
         DAIExchanged = await DAI.balanceOf(recipientWETH) - recipientWETHinitalDAI;
