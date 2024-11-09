@@ -2,6 +2,7 @@
 
 # (i) Change directory
 cd /home/ubuntu/ethereum-MEV/saadDep
+rm -r /home/ubuntu/ethereum-MEV/saadDep/ignition/deployments
 
 # (ii) Run hardhat ignition deployment with a "yes" response
 yes | npx hardhat ignition deploy ignition/modules/LiquidityDeployment.js --network local

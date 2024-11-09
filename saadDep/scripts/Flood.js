@@ -25,10 +25,28 @@ let noSlippage;
 const dataFilePath = path.join(__dirname, 'simulation_results.txt');
 const dataStream = fsS.createWriteStream(dataFilePath, { flags: 'w' }); // 'w' flag to overwrite existing file
 
+async function transferDAI(token, senderWallet, recipientAddress, amount) {
+    try {
+        // Connect the DAI contract to the sender's wallet
+        const tokenWithSender = token.connect(senderWallet);
+
+        // Initiate the transfer
+        const tx = await tokenWithSender.transfer(recipientAddress, amount);
+        console.log(`token transfer transaction sent: ${tx.hash}`);
+
+        // Wait for the transaction to be confirmed
+        const receipt = await tx.wait();
+        console.log(`token transfer confirmed in block ${receipt.blockNumber}, transaction hash: ${receipt.transactionHash}`);
+    } catch (error) {
+        console.error("token transfer failed:", error);
+    }
+}
+
 async function main() {
 
     // Setup the providers and signers
     await setup();
+
     // Write headers to the data file
     dataStream.write('DAIAmount,WETHAmount,BlockNumber,AttackerProfitDAI,AttackerProfitWETH,Token0Reserve,Token1Reserve\n');
 
@@ -105,7 +123,10 @@ async function main() {
     let totalPerfectExpectedDAI = 0n;
     let totalPerfectExpectedWETH = 0n;
 
+    transferDAI(WETH, recipientWalletDAI, recipientWalletWETH, 2438);
+
     for (let i = 0; i < blockTransactions.length; i++) {
+
         // Reset variables for the block
         expectedDAI = 0n;
         expectedWETH = 0n;
