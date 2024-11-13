@@ -839,6 +839,41 @@
         "AtomicSwap",
         "IWeth"
       ]
+    },
+    "/home/ubuntu/ethereum-MEV/saadDep/contracts/MinerCommitmentTracker.sol": {
+      "lastModificationDate": 1731509850838,
+      "contentHash": "dc26198f0ba048c56ddaa81f43e108d4",
+      "sourceName": "contracts/MinerCommitmentTracker.sol",
+      "solcConfig": {
+        "version": "0.8.18",
+        "settings": {
+          "optimizer": {
+            "enabled": false,
+            "runs": 200
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.0"
+      ],
+      "artifacts": [
+        "MinerCommitmentTracker"
+      ]
     }
   }
 }

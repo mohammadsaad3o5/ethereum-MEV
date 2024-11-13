@@ -6,7 +6,9 @@ import os
 import traceback
 
 path = {"0x4bF8D2E79E33cfd5a8348737CA91bE5F65Ea7dd9": "DAI",
-        "0x91BF7398aFc3d2691aA23799fdb9175EE2EB6105": "WETH"}
+        "0x120671CcDfEbC50Cfe7B7A62bd0593AA6E3F3cF0": "WETH"}
+        # "0x91BF7398aFc3d2691aA23799fdb9175EE2EB6105": "WETH"}
+        
 botAddress = "0x802dCbE1B1A97554B4F50DB5119E37E8e7336417"
 
 
@@ -37,7 +39,7 @@ def monitor_txpool():
                         print(function_call)
                         # print(tx)
                         if "swap" in function_call[0].fn_name:
-                            rates = utility.get_exchange_rate()
+                            # rates = utility.get_exchange_rate()
                             if tx['from'].upper() != botAddress.upper():
                                 with open("arbitrage.txt", 'a') as file:
                                     print("arbitrage opportunity!")

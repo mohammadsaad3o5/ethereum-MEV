@@ -123,7 +123,7 @@ async function main() {
     let totalPerfectExpectedDAI = 0n;
     let totalPerfectExpectedWETH = 0n;
 
-    transferDAI(WETH, recipientWalletDAI, recipientWalletWETH, 2438);
+
 
     for (let i = 0; i < blockTransactions.length; i++) {
 
@@ -306,11 +306,17 @@ async function main() {
 
 function setup() {
     // Contract ABIs and addresses
-    DAI_ADDRESS = "0x4bF8D2E79E33cfd5a8348737CA91bE5F65Ea7dd9";
-    WETH_ADDRESS = "0x91BF7398aFc3d2691aA23799fdb9175EE2EB6105";
-    UniV2FactoryA_ADDRESS = "0x120671CcDfEbC50Cfe7B7A62bd0593AA6E3F3cF0";
-    UniV2FactoryB_ADDRESS = "0x1212eE52Bc401cCA1BF752D7E13F78a4eb3EbBB3";
-    AtomicSwap_ADDRESS = "0x8Ed7F8Eca5535258AD520E32Ff6B8330A187641C";
+    // DAI_ADDRESS = "0x4bF8D2E79E33cfd5a8348737CA91bE5F65Ea7dd9";
+    // WETH_ADDRESS = "0x91BF7398aFc3d2691aA23799fdb9175EE2EB6105";
+    // UniV2FactoryA_ADDRESS = "0x120671CcDfEbC50Cfe7B7A62bd0593AA6E3F3cF0";
+    // UniV2FactoryB_ADDRESS = "0x1212eE52Bc401cCA1BF752D7E13F78a4eb3EbBB3";
+    // AtomicSwap_ADDRESS = "0x8Ed7F8Eca5535258AD520E32Ff6B8330A187641C";
+    // pairABI = require('/home/ubuntu/ethereum-MEV/saadDep/artifacts/@uniswap/v2-core/contracts/UniswapV2Pair.sol/UniswapV2Pair.json').abi;
+    // Contract ABIs and addresses
+    DAI_ADDRESS = "0x4bF8D2E79E33cfd5a8348737CA91bE5F65Ea7dd9"; 
+    WETH_ADDRESS = "0x120671CcDfEbC50Cfe7B7A62bd0593AA6E3F3cF0";
+    UniV2FactoryA_ADDRESS = "0x1212eE52Bc401cCA1BF752D7E13F78a4eb3EbBB3"; 
+    AtomicSwap_ADDRESS = "0x8Ed7F8Eca5535258AD520E32Ff6B8330A187641C"; 
     pairABI = require('/home/ubuntu/ethereum-MEV/saadDep/artifacts/@uniswap/v2-core/contracts/UniswapV2Pair.sol/UniswapV2Pair.json').abi;
 
     // Set up provider and signers
@@ -335,7 +341,7 @@ function setup() {
     DAI = new ethers.Contract(DAI_ADDRESS, DAI_ABI, deployerWallet);
     WETH = new ethers.Contract(WETH_ADDRESS, WETH_ABI, deployerWallet);
     UniV2FactoryA = new ethers.Contract(UniV2FactoryA_ADDRESS, UniV2Factory_ABI, factoryAdminWallet);
-    UniV2FactoryB = new ethers.Contract(UniV2FactoryB_ADDRESS, UniV2Factory_ABI, factoryAdminWallet);
+    // UniV2FactoryB = new ethers.Contract(UniV2FactoryB_ADDRESS, UniV2Factory_ABI, factoryAdminWallet);
     AtomicSwapWETH = new ethers.Contract(AtomicSwap_ADDRESS, AtomicSwap_ABI, recipientWalletWETH);
     AtomicSwapDAI = new ethers.Contract(AtomicSwap_ADDRESS, AtomicSwap_ABI, recipientWalletDAI);
 }

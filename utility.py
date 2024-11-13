@@ -12,7 +12,7 @@ from web3.middleware import construct_sign_and_send_raw_middleware
 from eth_utils import to_checksum_address
 import rlp
 
-rpc_url = "http://localhost:33598"
+rpc_url = "http://localhost:33170"
 
 '''
 0x1CD4aF4A9bF33474C802d31790A195335f7a9Ab8 - DAI (deployed first)
@@ -45,9 +45,13 @@ with open('jsons/WETH9.json', 'r') as abi_file:
     weth_abi = json.load(abi_file)['abi']
 with open('jsons/UniswapV2Pair.json', 'r') as abi_file:
     pair_contract_abi = json.load(abi_file)['abi']
-with open("jsons/UniswapV2Router01.json", 'r') as abi_file:
-    uniV2Router_abi = json.load(abi_file)['abi']
+# with open("jsons/UniswapV2Router01.json", 'r') as abi_file:
+    # uniV2Router_abi = json.load(abi_file)['abi']
 
+#   DAI_ADDRESS = "0x4bF8D2E79E33cfd5a8348737CA91bE5F65Ea7dd9"; 
+#   WETH_ADDRESS = "0x120671CcDfEbC50Cfe7B7A62bd0593AA6E3F3cF0";
+#   UniV2FactoryA_ADDRESS = "0x1212eE52Bc401cCA1BF752D7E13F78a4eb3EbBB3"; 
+#   AtomicSwap_ADDRESS = "0x8Ed7F8Eca5535258AD520E32Ff6B8330A187641C"; 
 
 # Load the contracts into a list
 dai_contract_address = "0x4bF8D2E79E33cfd5a8348737CA91bE5F65Ea7dd9"
@@ -56,15 +60,15 @@ contract_list.append(dai_contract)
 atomicSwap_contract_address = "0x8Ed7F8Eca5535258AD520E32Ff6B8330A187641C"
 atomicSwap_contract = w3.eth.contract(address=atomicSwap_contract_address, abi=atomicSwap_abi)
 contract_list.append(atomicSwap_contract)
-weth_contract_address = "0x91BF7398aFc3d2691aA23799fdb9175EE2EB6105"
+weth_contract_address = "0x120671CcDfEbC50Cfe7B7A62bd0593AA6E3F3cF0"
 weth_contract = w3.eth.contract(address=weth_contract_address, abi=weth_abi)
 contract_list.append(weth_contract)
-pair_contractA_address = "0x48bB0AeFb4EE218a433d5D24c16Bcc4806ed5f39"
+pair_contractA_address = "0x399BaA6765d2515f59325f13EB99171cA3897e37"
 pair_contractA = w3.eth.contract(address=pair_contractA_address, abi=pair_contract_abi)
 contract_list.append(pair_contractA)
-uniV2Router_address = "0xB74Bb6AE1A1804D283D17e95620dA9b9b0E6E0DA"
-uniV2Router_contract = w3.eth.contract(address=uniV2Router_address, abi=uniV2Router_abi)
-contract_list.append(uniV2Router_contract)
+# uniV2Router_address = "0xB74Bb6AE1A1804D283D17e95620dA9b9b0E6E0DA"
+# uniV2Router_contract = w3.eth.contract(address=uniV2Router_address, abi=uniV2Router_abi)
+# contract_list.append(uniV2Router_contract)
 # pair_contractB_address = "0xD83BDeDDE3AdB58b335737bD0E8eb77E16695375"
 # pair_contractB = w3.eth.contract(address=pair_contractB_address, abi=pair_contract_abi)
 # contract_list.append(pair_contractB)

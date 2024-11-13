@@ -52,7 +52,7 @@ ethereum_address = ["0x8943545177806ED17B9F23F0a21ee5948eCaa776",
 # function to spam transaction
 def spam(priv, addr, bribe, idx):
     value = randint(5000, 500000)
-    hash = utility.send_signed_transaction(priv, addr, value, bribe)
+    hash = utility.send_signed_transaction(priv, addr, value, bribe-idx)
     print(f"({idx})sent a transaction from {ethereum_address[private_key.index(priv)]} to {addr} for {value} wei")
     print(hash)
     return None
